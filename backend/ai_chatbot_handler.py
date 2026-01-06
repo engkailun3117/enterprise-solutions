@@ -14,10 +14,15 @@ from config import get_settings
 # Initialize settings
 settings = get_settings()
 
-# Initialize OpenAI client
-client = None
-if settings.openai_api_key:
-    client = OpenAI(api_key=settings.openai_api_key)
+# OpenAI client will be initialized lazily
+_client = None
+
+def get_openai_client():
+    """Lazy initialize OpenAI client"""
+    global _client
+    if _client is None and settings.openai_api_key:
+        _client = OpenAI(api_key=settings.openai_api_key)
+    return _client
 
 
 # Country to tax rate mapping (as percentage * 100, e.g., 10 = 10%)
@@ -169,6 +174,7 @@ class AIChatbotHandler:
 
     def extract_data_with_ai(self, user_message: str, conversation_history: List[Dict]) -> Dict[str, Any]:
         """Use OpenAI to extract structured data from conversation"""
+        client = get_openai_client()
         if not client:
             return {"error": "OpenAI API key not configured"}
 
