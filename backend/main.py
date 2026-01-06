@@ -20,6 +20,7 @@ from auth import (
     get_current_active_user, require_admin
 )
 from chatbot_handler import ChatbotHandler
+from ai_chatbot_handler import AIChatbotHandler
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -495,21 +496,41 @@ async def send_chatbot_message(
     Returns: Chatbot response with session information
     """
     try:
-        # Initialize chatbot handler
-        handler = ChatbotHandler(db, current_user.id, chat_data.session_id)
+        # Choose handler based on configuration
+        settings = get_settings()
+        use_ai = settings.use_ai_chatbot and settings.openai_api_key
+
+        # Initialize appropriate chatbot handler
+        if use_ai:
+            handler = AIChatbotHandler(db, current_user.id, chat_data.session_id)
+            ai_mode = " 🤖 (AI模式)"
+        else:
+            handler = ChatbotHandler(db, current_user.id, chat_data.session_id)
+            ai_mode = ""
 
         # Create new session if needed
         if not handler.session:
             session = handler.create_session()
             # Send welcome message
-            welcome_message = (
-                "您好！我是企業導入助理 👋\n\n"
-                "我將協助您建立公司資料。我會逐步引導您輸入以下資訊：\n"
-                "• 公司基本資料（ID、名稱、產業別、國家、地址等）\n"
-                "• 公司規模與認證資料\n"
-                "• 產品資訊\n\n"
-                "讓我們開始吧！首先，請問您的公司ID（統一編號）是什麼？"
-            )
+            if use_ai:
+                welcome_message = (
+                    "您好！我是企業導入 AI 助理 🤖\n\n"
+                    "我將用智能對話的方式協助您建立公司資料。您可以用自然的方式告訴我：\n"
+                    "• 公司基本資料（ID、名稱、產業別、國家、地址等）\n"
+                    "• 公司規模與認證資料\n"
+                    "• 產品資訊\n\n"
+                    "您可以一次提供多個資訊，我會自動理解並記錄。\n"
+                    "讓我們開始吧！請告訴我您的公司資料。"
+                )
+            else:
+                welcome_message = (
+                    "您好！我是企業導入助理 👋\n\n"
+                    "我將協助您建立公司資料。我會逐步引導您輸入以下資訊：\n"
+                    "• 公司基本資料（ID、名稱、產業別、國家、地址等）\n"
+                    "• 公司規模與認證資料\n"
+                    "• 產品資訊\n\n"
+                    "讓我們開始吧！首先，請問您的公司ID（統一編號）是什麼？"
+                )
             handler.add_message("assistant", welcome_message)
 
             return ChatResponse(
