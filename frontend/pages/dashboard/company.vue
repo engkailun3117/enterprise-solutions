@@ -207,6 +207,25 @@ const chatCompleted = ref(false)
 const progress = ref<any>(null)
 const chatMessages = ref<HTMLElement | null>(null)
 
+// Session persistence functions
+const loadSavedSession = () => {
+  if (typeof window === 'undefined') return null
+  const saved = localStorage.getItem('chatbot_session_id')
+  return saved ? parseInt(saved) : null
+}
+
+const saveSessionId = (id: number) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('chatbot_session_id', id.toString())
+  }
+}
+
+const clearSavedSession = () => {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('chatbot_session_id')
+  }
+}
+
 const taxIdValid = computed(() => {
   return /^\d{8}$/.test(companyData.value.taxId)
 })
@@ -258,6 +277,7 @@ const sendMessage = async () => {
     // Store session ID if new session
     if (!sessionId.value) {
       sessionId.value = response.session_id
+      saveSessionId(response.session_id) // Persist to localStorage
     }
 
     // Add user message
@@ -301,14 +321,42 @@ const sendMessage = async () => {
   }
 }
 
-const startNewSession = () => {
+const startNewSession = async () => {
   sessionId.value = null
   messages.value = []
   chatCompleted.value = false
   progress.value = null
+  clearSavedSession()
 
-  // Automatically start new session
-  sendMessage()
+  // Initialize new session with welcome message
+  try {
+    const response = await api.post('/api/chatbot/message', {
+      message: '',
+      session_id: null
+    })
+
+    sessionId.value = response.session_id
+    saveSessionId(response.session_id)
+
+    messages.value.push({
+      id: Date.now(),
+      role: 'assistant',
+      content: response.message,
+      created_at: new Date().toISOString()
+    })
+
+    progress.value = response.progress
+    chatCompleted.value = response.completed
+
+    scrollToBottom()
+  } catch (error: any) {
+    console.error('Error starting new session:', error)
+    toast.add({
+      title: '錯誤',
+      description: '無法啟動新對話',
+      color: 'red'
+    })
+  }
 }
 
 const exportData = async () => {
@@ -345,28 +393,104 @@ const exportData = async () => {
 
 // Auto-start chatbot on mount
 onMounted(async () => {
-  // Initialize chatbot with welcome message by sending empty message
-  // This will create a new session and get the welcome response
   try {
-    const response = await api.post('/api/chatbot/message', {
-      message: '',
-      session_id: null
-    })
+    // Check for saved session
+    const savedSessionId = loadSavedSession()
 
-    sessionId.value = response.session_id
+    if (savedSessionId) {
+      // Try to load existing session
+      try {
+        // Load session messages
+        const sessionMessages = await api.getChatMessages(savedSessionId)
 
-    // Add welcome message from bot
-    messages.value.push({
-      id: Date.now(),
-      role: 'assistant',
-      content: response.message,
-      created_at: new Date().toISOString()
-    })
+        // Load session data to check if completed
+        const sessionData = await api.getOnboardingData(savedSessionId)
 
-    progress.value = response.progress
-    chatCompleted.value = response.completed
+        // Restore session state
+        sessionId.value = savedSessionId
+        messages.value = sessionMessages.map((msg: any) => ({
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          created_at: msg.created_at
+        }))
 
-    scrollToBottom()
+        // Calculate progress
+        const onboardingData = sessionData.onboarding_data
+        let fieldsCompleted = 0
+        const totalFields = 10
+
+        if (onboardingData.company_id) fieldsCompleted++
+        if (onboardingData.company_name) fieldsCompleted++
+        if (onboardingData.industry) fieldsCompleted++
+        if (onboardingData.country) fieldsCompleted++
+        if (onboardingData.address) fieldsCompleted++
+        if (onboardingData.capital_amount !== null) fieldsCompleted++
+        if (onboardingData.invention_patent_count !== null) fieldsCompleted++
+        if (onboardingData.utility_patent_count !== null) fieldsCompleted++
+        if (onboardingData.certification_count !== null) fieldsCompleted++
+        if (onboardingData.esg_certification !== null) fieldsCompleted++
+
+        progress.value = {
+          company_info_complete: fieldsCompleted === totalFields,
+          fields_completed: fieldsCompleted,
+          total_fields: totalFields,
+          products_count: onboardingData.products?.length || 0
+        }
+
+        chatCompleted.value = sessionData.status === 'completed'
+
+        scrollToBottom()
+
+        console.log('Session restored:', savedSessionId)
+      } catch (error: any) {
+        // If session doesn't exist or error loading, clear and start new
+        console.log('Could not restore session, starting new:', error.message)
+        clearSavedSession()
+
+        // Start new session
+        const response = await api.post('/api/chatbot/message', {
+          message: '',
+          session_id: null
+        })
+
+        sessionId.value = response.session_id
+        saveSessionId(response.session_id)
+
+        messages.value.push({
+          id: Date.now(),
+          role: 'assistant',
+          content: response.message,
+          created_at: new Date().toISOString()
+        })
+
+        progress.value = response.progress
+        chatCompleted.value = response.completed
+
+        scrollToBottom()
+      }
+    } else {
+      // No saved session, start new one
+      const response = await api.post('/api/chatbot/message', {
+        message: '',
+        session_id: null
+      })
+
+      sessionId.value = response.session_id
+      saveSessionId(response.session_id)
+
+      messages.value.push({
+        id: Date.now(),
+        role: 'assistant',
+        content: response.message,
+        created_at: new Date().toISOString()
+      })
+
+      progress.value = response.progress
+      chatCompleted.value = response.completed
+
+      scrollToBottom()
+    }
   } catch (error: any) {
     // Silently fail if user is not logged in
     console.log('Chatbot initialization skipped:', error.message)
