@@ -352,12 +352,10 @@ const startNewSession = async () => {
   progress.value = null
   clearSavedSession()
 
-  // Initialize new session with welcome message
+  // Initialize new session with context from previous session
   try {
-    const response = await api.post('/api/chatbot/message', {
-      message: '',
-      session_id: null
-    })
+    // Use smart session creation that copies company info from latest session
+    const response = await api.createNewSessionWithContext()
 
     sessionId.value = response.session_id
     saveSessionId(response.session_id)
@@ -371,6 +369,15 @@ const startNewSession = async () => {
 
     progress.value = response.progress
     chatCompleted.value = response.completed
+
+    // Show notification if company info was copied
+    if (response.company_info_copied) {
+      toast.add({
+        title: '已載入公司資料',
+        description: '上次的公司資訊已自動載入，您可以直接更新或確認',
+        color: 'green'
+      })
+    }
 
     scrollToBottom()
   } catch (error: any) {
@@ -418,61 +425,157 @@ const exportData = async () => {
 // Auto-start chatbot on mount
 onMounted(async () => {
   try {
-    // Check for saved session
+    // Helper function to load session by ID
+    const loadSessionById = async (id: number) => {
+      // Load session messages
+      const sessionMessages = await api.getChatMessages(id)
+
+      // Load session data to check if completed
+      const sessionData = await api.getOnboardingData(id)
+
+      // Restore session state
+      sessionId.value = id
+      messages.value = sessionMessages.map((msg: any) => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        created_at: msg.created_at
+      }))
+
+      // Calculate progress
+      const onboardingData = sessionData.onboarding_data
+      let fieldsCompleted = 0
+      const totalFields = 10
+
+      if (onboardingData.company_id) fieldsCompleted++
+      if (onboardingData.company_name) fieldsCompleted++
+      if (onboardingData.industry) fieldsCompleted++
+      if (onboardingData.country) fieldsCompleted++
+      if (onboardingData.address) fieldsCompleted++
+      if (onboardingData.capital_amount !== null) fieldsCompleted++
+      if (onboardingData.invention_patent_count !== null) fieldsCompleted++
+      if (onboardingData.utility_patent_count !== null) fieldsCompleted++
+      if (onboardingData.certification_count !== null) fieldsCompleted++
+      if (onboardingData.esg_certification !== null) fieldsCompleted++
+
+      progress.value = {
+        company_info_complete: fieldsCompleted === totalFields,
+        fields_completed: fieldsCompleted,
+        total_fields: totalFields,
+        products_count: onboardingData.products?.length || 0
+      }
+
+      chatCompleted.value = sessionData.status === 'completed'
+
+      scrollToBottom()
+
+      console.log('Session restored:', id)
+    }
+
+    // Check for saved session in localStorage
     const savedSessionId = loadSavedSession()
 
     if (savedSessionId) {
-      // Try to load existing session
+      // Try to load existing session from localStorage
       try {
-        // Load session messages
-        const sessionMessages = await api.getChatMessages(savedSessionId)
-
-        // Load session data to check if completed
-        const sessionData = await api.getOnboardingData(savedSessionId)
-
-        // Restore session state
-        sessionId.value = savedSessionId
-        messages.value = sessionMessages.map((msg: any) => ({
-          id: msg.id,
-          role: msg.role,
-          content: msg.content,
-          created_at: msg.created_at
-        }))
-
-        // Calculate progress
-        const onboardingData = sessionData.onboarding_data
-        let fieldsCompleted = 0
-        const totalFields = 10
-
-        if (onboardingData.company_id) fieldsCompleted++
-        if (onboardingData.company_name) fieldsCompleted++
-        if (onboardingData.industry) fieldsCompleted++
-        if (onboardingData.country) fieldsCompleted++
-        if (onboardingData.address) fieldsCompleted++
-        if (onboardingData.capital_amount !== null) fieldsCompleted++
-        if (onboardingData.invention_patent_count !== null) fieldsCompleted++
-        if (onboardingData.utility_patent_count !== null) fieldsCompleted++
-        if (onboardingData.certification_count !== null) fieldsCompleted++
-        if (onboardingData.esg_certification !== null) fieldsCompleted++
-
-        progress.value = {
-          company_info_complete: fieldsCompleted === totalFields,
-          fields_completed: fieldsCompleted,
-          total_fields: totalFields,
-          products_count: onboardingData.products?.length || 0
-        }
-
-        chatCompleted.value = sessionData.status === 'completed'
-
-        scrollToBottom()
-
-        console.log('Session restored:', savedSessionId)
+        await loadSessionById(savedSessionId)
       } catch (error: any) {
-        // If session doesn't exist or error loading, clear and start new
-        console.log('Could not restore session, starting new:', error.message)
+        // If localStorage session doesn't exist or error loading, try backend
+        console.log('Could not restore localStorage session:', error.message)
         clearSavedSession()
 
-        // Start new session
+        // Try to get latest active session from backend
+        try {
+          const latestSessionResponse = await api.getLatestActiveSession()
+
+          if (latestSessionResponse.session_id) {
+            // Found an active session on backend, restore it
+            console.log('Found latest active session from backend:', latestSessionResponse.session_id)
+            await loadSessionById(latestSessionResponse.session_id)
+            saveSessionId(latestSessionResponse.session_id)
+          } else {
+            // No active session found, start new one
+            console.log('No active session found, starting new session')
+            const response = await api.post('/api/chatbot/message', {
+              message: '',
+              session_id: null
+            })
+
+            sessionId.value = response.session_id
+            saveSessionId(response.session_id)
+
+            messages.value.push({
+              id: Date.now(),
+              role: 'assistant',
+              content: response.message,
+              created_at: new Date().toISOString()
+            })
+
+            progress.value = response.progress
+            chatCompleted.value = response.completed
+
+            scrollToBottom()
+          }
+        } catch (backendError: any) {
+          console.error('Error getting latest session from backend:', backendError)
+          // Fall back to creating new session
+          const response = await api.post('/api/chatbot/message', {
+            message: '',
+            session_id: null
+          })
+
+          sessionId.value = response.session_id
+          saveSessionId(response.session_id)
+
+          messages.value.push({
+            id: Date.now(),
+            role: 'assistant',
+            content: response.message,
+            created_at: new Date().toISOString()
+          })
+
+          progress.value = response.progress
+          chatCompleted.value = response.completed
+
+          scrollToBottom()
+        }
+      }
+    } else {
+      // No saved session in localStorage, check backend for latest active session
+      try {
+        const latestSessionResponse = await api.getLatestActiveSession()
+
+        if (latestSessionResponse.session_id) {
+          // Found an active session on backend, restore it
+          console.log('Found latest active session from backend:', latestSessionResponse.session_id)
+          await loadSessionById(latestSessionResponse.session_id)
+          saveSessionId(latestSessionResponse.session_id)
+        } else {
+          // No active session found, start new one
+          console.log('No active session found, starting new session')
+          const response = await api.post('/api/chatbot/message', {
+            message: '',
+            session_id: null
+          })
+
+          sessionId.value = response.session_id
+          saveSessionId(response.session_id)
+
+          messages.value.push({
+            id: Date.now(),
+            role: 'assistant',
+            content: response.message,
+            created_at: new Date().toISOString()
+          })
+
+          progress.value = response.progress
+          chatCompleted.value = response.completed
+
+          scrollToBottom()
+        }
+      } catch (backendError: any) {
+        console.error('Error getting latest session from backend:', backendError)
+        // Fall back to creating new session
         const response = await api.post('/api/chatbot/message', {
           message: '',
           session_id: null
@@ -493,27 +596,6 @@ onMounted(async () => {
 
         scrollToBottom()
       }
-    } else {
-      // No saved session, start new one
-      const response = await api.post('/api/chatbot/message', {
-        message: '',
-        session_id: null
-      })
-
-      sessionId.value = response.session_id
-      saveSessionId(response.session_id)
-
-      messages.value.push({
-        id: Date.now(),
-        role: 'assistant',
-        content: response.message,
-        created_at: new Date().toISOString()
-      })
-
-      progress.value = response.progress
-      chatCompleted.value = response.completed
-
-      scrollToBottom()
     }
   } catch (error: any) {
     // Silently fail if user is not logged in

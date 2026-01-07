@@ -581,6 +581,163 @@ async def get_user_chat_sessions(
     return [session.to_dict() for session in sessions]
 
 
+@app.get("/api/chatbot/sessions/latest")
+async def get_latest_active_session(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get the latest active chat session for the current user
+
+    This endpoint helps avoid creating duplicate sessions on page refresh.
+    It returns the most recent active session if one exists.
+
+    Requires: Authentication
+    Returns: Latest active session or null if none exists
+    """
+    # Find the most recent active session
+    latest_session = db.query(ChatSession).filter(
+        ChatSession.user_id == current_user.id,
+        ChatSession.status == ChatSessionStatus.ACTIVE
+    ).order_by(ChatSession.created_at.desc()).first()
+
+    if latest_session:
+        return {
+            "session_id": latest_session.id,
+            "status": latest_session.status.value,
+            "created_at": latest_session.created_at.isoformat() if latest_session.created_at else None
+        }
+
+    return {"session_id": None}
+
+
+@app.post("/api/chatbot/sessions/new")
+async def create_new_session_with_context(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Create a new chat session and copy company info from the latest session
+
+    This endpoint is called when user explicitly clicks "New Session".
+    It intelligently copies the latest company information to avoid duplicate records,
+    while allowing the user to update the information if needed.
+
+    Requires: Authentication
+    Returns: New session ID with pre-populated company info
+    """
+    # Find the most recent session with company data (completed or active)
+    latest_session = db.query(ChatSession).filter(
+        ChatSession.user_id == current_user.id
+    ).order_by(ChatSession.created_at.desc()).first()
+
+    latest_company_data = None
+    if latest_session:
+        latest_company_data = db.query(CompanyOnboarding).filter(
+            CompanyOnboarding.chat_session_id == latest_session.id
+        ).first()
+
+    # Choose handler based on configuration
+    settings = get_settings()
+    use_ai = settings.use_ai_chatbot and settings.openai_api_key
+
+    # Initialize appropriate chatbot handler
+    if use_ai:
+        handler = AIChatbotHandler(db, current_user.id, None)
+    else:
+        handler = ChatbotHandler(db, current_user.id, None)
+
+    # Create new session
+    new_session = handler.create_session()
+
+    # If we found previous company data, copy it to the new session
+    if latest_company_data:
+        # Get the newly created onboarding data
+        new_onboarding = db.query(CompanyOnboarding).filter(
+            CompanyOnboarding.chat_session_id == new_session.id
+        ).first()
+
+        if new_onboarding:
+            # Copy all company fields from latest session
+            new_onboarding.company_id = latest_company_data.company_id
+            new_onboarding.company_name = latest_company_data.company_name
+            new_onboarding.industry = latest_company_data.industry
+            new_onboarding.country = latest_company_data.country
+            new_onboarding.address = latest_company_data.address
+            new_onboarding.capital_amount = latest_company_data.capital_amount
+            new_onboarding.invention_patent_count = latest_company_data.invention_patent_count
+            new_onboarding.utility_patent_count = latest_company_data.utility_patent_count
+            new_onboarding.certification_count = latest_company_data.certification_count
+            new_onboarding.esg_certification = latest_company_data.esg_certification
+            new_onboarding.tax = latest_company_data.tax
+
+            db.commit()
+
+            # Copy products
+            old_products = db.query(Product).filter(
+                Product.company_onboarding_id == latest_company_data.id
+            ).all()
+
+            for old_product in old_products:
+                new_product = Product(
+                    company_onboarding_id=new_onboarding.id,
+                    product_name=old_product.product_name,
+                    product_category=old_product.product_category
+                )
+                db.add(new_product)
+
+            db.commit()
+
+    # Send welcome message
+    if use_ai:
+        if latest_company_data and latest_company_data.company_name:
+            welcome_message = (
+                f"您好！歡迎回來！🤖\n\n"
+                f"我已經為您載入了上次的公司資料：\n"
+                f"• 公司名稱：{latest_company_data.company_name}\n"
+                f"• 公司ID：{latest_company_data.company_id or '未填寫'}\n\n"
+                f"您可以告訴我需要更新哪些資訊，或是新增/修改產品資料。\n"
+                f"如果資料都正確，您也可以直接確認完成。"
+            )
+        else:
+            welcome_message = (
+                "您好！我是企業導入 AI 助理 🤖\n\n"
+                "我將用智能對話的方式協助您建立公司資料。您可以用自然的方式告訴我：\n"
+                "• 公司基本資料（ID、名稱、產業別、國家、地址等）\n"
+                "• 公司規模與認證資料\n"
+                "• 產品資訊\n\n"
+                "您可以一次提供多個資訊，我會自動理解並記錄。\n"
+                "讓我們開始吧！請告訴我您的公司資料。"
+            )
+    else:
+        if latest_company_data and latest_company_data.company_name:
+            welcome_message = (
+                f"您好！歡迎回來！👋\n\n"
+                f"我已經為您載入了上次的公司資料：\n"
+                f"• 公司名稱：{latest_company_data.company_name}\n"
+                f"• 公司ID：{latest_company_data.company_id or '未填寫'}\n\n"
+                f"讓我們繼續吧！請問您的公司ID（統一編號）是什麼？"
+            )
+        else:
+            welcome_message = (
+                "您好！我是企業導入助理 👋\n\n"
+                "我將協助您建立公司資料。我會逐步引導您輸入以下資訊：\n"
+                "• 公司基本資料（ID、名稱、產業別、國家、地址等）\n"
+                "• 公司規模與認證資料\n"
+                "• 產品資訊\n\n"
+                "讓我們開始吧！首先，請問您的公司ID（統一編號）是什麼？"
+            )
+
+    handler.add_message("assistant", welcome_message)
+
+    return {
+        "session_id": new_session.id,
+        "message": welcome_message,
+        "company_info_copied": latest_company_data is not None,
+        "progress": handler.get_progress()
+    }
+
+
 @app.get("/api/chatbot/sessions/{session_id}/messages", response_model=List[ChatMessageResponse])
 async def get_session_messages(
     session_id: int,

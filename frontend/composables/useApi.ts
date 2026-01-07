@@ -250,6 +250,24 @@ export const useApi = () => {
     return response
   }
 
+  const getLatestActiveSession = async () => {
+    const response = await $fetch('/api/chatbot/sessions/latest', {
+      method: 'GET',
+      baseURL,
+      headers: getAuthHeaders()
+    })
+    return response
+  }
+
+  const createNewSessionWithContext = async () => {
+    const response = await $fetch('/api/chatbot/sessions/new', {
+      method: 'POST',
+      baseURL,
+      headers: getAuthHeaders()
+    })
+    return response
+  }
+
   const getChatMessages = async (sessionId: number) => {
     const response = await $fetch(`/api/chatbot/sessions/${sessionId}/messages`, {
       method: 'GET',
@@ -326,6 +344,8 @@ export const useApi = () => {
     // Chatbot
     sendChatMessage,
     getChatSessions,
+    getLatestActiveSession,
+    createNewSessionWithContext,
     getChatMessages,
     getOnboardingData,
     exportOnboardingData,
