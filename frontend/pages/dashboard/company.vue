@@ -70,14 +70,14 @@
           </div>
 
           <div class="chat-input-container">
-            <input
+            <textarea
               v-model="userMessage"
-              type="text"
               class="chat-input"
-              placeholder="在此輸入訊息..."
-              @keyup.enter="sendMessage"
+              placeholder="在此輸入訊息... (Enter 發送，Shift+Enter 換行)"
+              @keydown="handleKeydown"
               :disabled="isLoading || chatCompleted"
-            >
+              rows="1"
+            ></textarea>
             <button
               class="btn-send"
               @click="sendMessage"
@@ -261,12 +261,36 @@ const scrollToBottom = () => {
   })
 }
 
+const handleKeydown = (event: KeyboardEvent) => {
+  // Enter without Shift = send message
+  // Shift+Enter = line break (default textarea behavior)
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault() // Prevent default line break
+    sendMessage()
+  } else {
+    // Auto-grow textarea on input
+    nextTick(() => {
+      const textarea = event.target as HTMLTextAreaElement
+      textarea.style.height = 'auto'
+      textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px'
+    })
+  }
+}
+
 const sendMessage = async () => {
   if (!userMessage.value.trim() || isLoading.value || chatCompleted.value) return
 
   const messageText = userMessage.value.trim()
   userMessage.value = ''
   isLoading.value = true
+
+  // Reset textarea height
+  nextTick(() => {
+    const textarea = document.querySelector('.chat-input') as HTMLTextAreaElement
+    if (textarea) {
+      textarea.style.height = 'auto'
+    }
+  })
 
   try {
     const response = await api.post('/api/chatbot/message', {
@@ -942,6 +966,7 @@ const handleCancel = () => {
 .chat-input-container {
   display: flex;
   gap: 8px;
+  align-items: flex-end;
 }
 
 .chat-input {
@@ -953,6 +978,12 @@ const handleCancel = () => {
   background: rgba(255, 255, 255, 0.9);
   color: #1a1a2e;
   transition: all 0.3s;
+  font-family: inherit;
+  line-height: 1.5;
+  min-height: 44px;
+  max-height: 150px;
+  resize: none;
+  overflow-y: auto;
 }
 
 .chat-input:focus {
