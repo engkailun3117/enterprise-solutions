@@ -89,6 +89,78 @@
         </div>
       </div>
 
+      <!-- Company Application Status Section -->
+      <div v-if="sessionId && progress?.company_info_complete" class="section-card application-section">
+        <div class="section-header">
+          <h2 class="section-title">📨 提交公司申請</h2>
+          <span v-if="companyApplication" :class="['status-badge', companyApplication.status]">
+            {{ getStatusText(companyApplication.status) }}
+          </span>
+        </div>
+
+        <div class="application-content">
+          <div v-if="!companyApplication" class="application-prompt">
+            <p>您已完成所有資料填寫！點擊下方按鈕提交正式申請。</p>
+            <button class="btn-primary" @click="submitApplication" :disabled="isSubmitting">
+              {{ isSubmitting ? '提交中...' : '提交申請' }}
+            </button>
+          </div>
+
+          <div v-else class="application-details">
+            <div class="detail-grid">
+              <div class="detail-item">
+                <label>公司名稱</label>
+                <p>{{ companyApplication.company_name }}</p>
+              </div>
+              <div class="detail-item">
+                <label>公司ID</label>
+                <p>{{ companyApplication.company_id }}</p>
+              </div>
+              <div class="detail-item">
+                <label>負責人</label>
+                <p>{{ companyApplication.company_head }}</p>
+              </div>
+              <div class="detail-item">
+                <label>聯絡 Email</label>
+                <p>{{ companyApplication.company_email }}</p>
+              </div>
+              <div class="detail-item">
+                <label>公司網址</label>
+                <p>{{ companyApplication.company_link || '未提供' }}</p>
+              </div>
+              <div class="detail-item">
+                <label>申請狀態</label>
+                <p :class="['status-text', companyApplication.status]">
+                  {{ getStatusText(companyApplication.status) }}
+                </p>
+              </div>
+              <div v-if="companyApplication.created_at" class="detail-item">
+                <label>提交時間</label>
+                <p>{{ formatDateTime(companyApplication.created_at) }}</p>
+              </div>
+              <div v-if="companyApplication.reviewed_at" class="detail-item">
+                <label>審核時間</label>
+                <p>{{ formatDateTime(companyApplication.reviewed_at) }}</p>
+              </div>
+            </div>
+
+            <div v-if="companyApplication.status === 'rejected' && companyApplication.rejection_reason" class="rejection-reason">
+              <label>拒絕原因</label>
+              <p>{{ companyApplication.rejection_reason }}</p>
+            </div>
+
+            <div class="application-actions">
+              <button v-if="companyApplication.status !== 'approved'" class="btn-secondary" @click="submitApplication" :disabled="isSubmitting">
+                {{ isSubmitting ? '更新中...' : '重新提交申請' }}
+              </button>
+              <button class="btn-link" @click="refreshApplicationStatus">
+                刷新狀態
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Company Identity Section -->
       <div class="section-card">
         <div class="section-header">
@@ -206,6 +278,10 @@ const isLoading = ref(false)
 const chatCompleted = ref(false)
 const progress = ref<any>(null)
 const chatMessages = ref<HTMLElement | null>(null)
+
+// Company application state
+const companyApplication = ref<any>(null)
+const isSubmitting = ref(false)
 
 // Session persistence functions
 const loadSavedSession = () => {
@@ -422,6 +498,81 @@ const exportData = async () => {
   }
 }
 
+// Company application functions
+const submitApplication = async () => {
+  if (!sessionId.value) return
+
+  isSubmitting.value = true
+  try {
+    const result = await api.submitChatbotApplication({
+      session_id: sessionId.value
+    })
+
+    companyApplication.value = result
+
+    toast.add({
+      title: '提交成功',
+      description: '您的公司申請已提交，請等待審核',
+      color: 'green'
+    })
+  } catch (error: any) {
+    console.error('Error submitting application:', error)
+    toast.add({
+      title: '提交失敗',
+      description: error.data?.detail || error.message || '無法提交申請',
+      color: 'red'
+    })
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+const refreshApplicationStatus = async () => {
+  try {
+    const result = await api.getMyApplication()
+    companyApplication.value = result.data
+
+    toast.add({
+      title: '已刷新',
+      description: '申請狀態已更新',
+      color: 'blue'
+    })
+  } catch (error: any) {
+    // If 404, it means no application exists yet
+    if (error.status === 404 || error.statusCode === 404) {
+      companyApplication.value = null
+    } else {
+      console.error('Error refreshing application:', error)
+      toast.add({
+        title: '刷新失敗',
+        description: error.data?.detail || error.message || '無法取得申請狀態',
+        color: 'red'
+      })
+    }
+  }
+}
+
+const getStatusText = (status: string) => {
+  const statusMap: Record<string, string> = {
+    pending: '審核中',
+    approved: '已核准',
+    rejected: '已拒絕'
+  }
+  return statusMap[status] || status
+}
+
+const formatDateTime = (dateStr: string) => {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  return date.toLocaleString('zh-TW', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
 // Auto-start chatbot on mount
 onMounted(async () => {
   try {
@@ -595,6 +746,19 @@ onMounted(async () => {
         chatCompleted.value = response.completed
 
         scrollToBottom()
+      }
+    }
+
+    // Load company application status
+    try {
+      const result = await api.getMyApplication()
+      if (result.data) {
+        companyApplication.value = result.data
+      }
+    } catch (error: any) {
+      // If 404, user hasn't submitted an application yet - this is normal
+      if (error.status !== 404 && error.statusCode !== 404) {
+        console.error('Error loading application status:', error)
       }
     }
   } catch (error: any) {
@@ -1110,5 +1274,188 @@ const handleCancel = () => {
   .chat-messages {
     max-height: 400px;
   }
+}
+
+/* Application Section Styles */
+.application-section {
+  background: linear-gradient(135deg, #43cea2 0%, #185a9d 100%);
+  color: white;
+}
+
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-badge.pending {
+  background: rgba(255, 193, 7, 0.9);
+  color: #1a1a2e;
+}
+
+.status-badge.approved {
+  background: rgba(76, 175, 80, 0.9);
+  color: white;
+}
+
+.status-badge.rejected {
+  background: rgba(244, 67, 54, 0.9);
+  color: white;
+}
+
+.application-content {
+  padding: 16px 0;
+}
+
+.application-prompt {
+  text-align: center;
+  padding: 24px;
+}
+
+.application-prompt p {
+  font-size: 16px;
+  margin-bottom: 20px;
+  opacity: 0.95;
+}
+
+.application-prompt .btn-primary {
+  background: white;
+  color: #185a9d;
+  padding: 12px 32px;
+  border-radius: 24px;
+  font-size: 15px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.application-prompt .btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+}
+
+.application-prompt .btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.application-details {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.detail-item label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.8;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.detail-item p {
+  font-size: 15px;
+  font-weight: 500;
+  margin: 0;
+}
+
+.status-text {
+  padding: 4px 12px;
+  border-radius: 12px;
+  display: inline-block;
+  font-size: 14px;
+}
+
+.status-text.pending {
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+}
+
+.status-text.approved {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+}
+
+.status-text.rejected {
+  background: rgba(244, 67, 54, 0.2);
+  color: #f44336;
+}
+
+.rejection-reason {
+  background: rgba(244, 67, 54, 0.2);
+  border-left: 4px solid #f44336;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.rejection-reason label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #f44336;
+}
+
+.rejection-reason p {
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0;
+  color: white;
+}
+
+.application-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.application-actions .btn-secondary {
+  background: white;
+  color: #185a9d;
+  padding: 10px 24px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.application-actions .btn-secondary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.application-actions .btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.application-actions .btn-link {
+  background: transparent;
+  color: white;
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.application-actions .btn-link:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 </style>

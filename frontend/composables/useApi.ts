@@ -304,6 +304,21 @@ export const useApi = () => {
     return response
   }
 
+  const submitChatbotApplication = async (data: {
+    session_id?: number
+    company_head?: string
+    company_email?: string
+    company_link?: string
+  } = {}) => {
+    const response = await $fetch('/api/chatbot/submit-application', {
+      method: 'POST',
+      baseURL,
+      body: data,
+      headers: getAuthHeaders()
+    })
+    return response
+  }
+
   // Generic methods for backward compatibility
   const post = async (url: string, body: any) => {
     const response = await $fetch(url, {
@@ -350,6 +365,7 @@ export const useApi = () => {
     getOnboardingData,
     exportOnboardingData,
     exportAllOnboardingData,
+    submitChatbotApplication,
     // Generic
     post,
     get
