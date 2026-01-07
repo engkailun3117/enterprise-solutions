@@ -229,6 +229,83 @@ export const useApi = () => {
     }
   }
 
+  // ============== Chatbot ==============
+
+  const sendChatMessage = async (message: string, sessionId: number | null = null) => {
+    const response = await $fetch('/api/chatbot/message', {
+      method: 'POST',
+      baseURL,
+      body: { message, session_id: sessionId },
+      headers: getAuthHeaders()
+    })
+    return response
+  }
+
+  const getChatSessions = async () => {
+    const response = await $fetch('/api/chatbot/sessions', {
+      method: 'GET',
+      baseURL,
+      headers: getAuthHeaders()
+    })
+    return response
+  }
+
+  const getChatMessages = async (sessionId: number) => {
+    const response = await $fetch(`/api/chatbot/sessions/${sessionId}/messages`, {
+      method: 'GET',
+      baseURL,
+      headers: getAuthHeaders()
+    })
+    return response
+  }
+
+  const getOnboardingData = async (sessionId: number) => {
+    const response = await $fetch(`/api/chatbot/data/${sessionId}`, {
+      method: 'GET',
+      baseURL,
+      headers: getAuthHeaders()
+    })
+    return response
+  }
+
+  const exportOnboardingData = async (sessionId: number) => {
+    const response = await $fetch(`/api/chatbot/export/${sessionId}`, {
+      method: 'GET',
+      baseURL,
+      headers: getAuthHeaders()
+    })
+    return response
+  }
+
+  const exportAllOnboardingData = async () => {
+    const response = await $fetch('/api/chatbot/export/all', {
+      method: 'GET',
+      baseURL,
+      headers: getAuthHeaders()
+    })
+    return response
+  }
+
+  // Generic methods for backward compatibility
+  const post = async (url: string, body: any) => {
+    const response = await $fetch(url, {
+      method: 'POST',
+      baseURL,
+      body,
+      headers: getAuthHeaders()
+    })
+    return response
+  }
+
+  const get = async (url: string) => {
+    const response = await $fetch(url, {
+      method: 'GET',
+      baseURL,
+      headers: getAuthHeaders()
+    })
+    return response
+  }
+
   return {
     // Auth
     register,
@@ -245,6 +322,16 @@ export const useApi = () => {
     // Admin
     getAllApplications,
     reviewApplication,
-    getAdminStats
+    getAdminStats,
+    // Chatbot
+    sendChatMessage,
+    getChatSessions,
+    getChatMessages,
+    getOnboardingData,
+    exportOnboardingData,
+    exportAllOnboardingData,
+    // Generic
+    post,
+    get
   }
 }

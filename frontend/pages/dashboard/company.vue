@@ -344,9 +344,33 @@ const exportData = async () => {
 }
 
 // Auto-start chatbot on mount
-onMounted(() => {
-  // Initialize with welcome message
-  sendMessage()
+onMounted(async () => {
+  // Initialize chatbot with welcome message by sending empty message
+  // This will create a new session and get the welcome response
+  try {
+    const response = await api.post('/api/chatbot/message', {
+      message: '',
+      session_id: null
+    })
+
+    sessionId.value = response.session_id
+
+    // Add welcome message from bot
+    messages.value.push({
+      id: Date.now(),
+      role: 'assistant',
+      content: response.message,
+      created_at: new Date().toISOString()
+    })
+
+    progress.value = response.progress
+    chatCompleted.value = response.completed
+
+    scrollToBottom()
+  } catch (error: any) {
+    // Silently fail if user is not logged in
+    console.log('Chatbot initialization skipped:', error.message)
+  }
 })
 
 const validateTaxId = () => {
