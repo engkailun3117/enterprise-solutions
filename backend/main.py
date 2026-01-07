@@ -6,17 +6,21 @@ from typing import List
 from datetime import datetime
 
 from database import get_db, engine, Base
-from models import CompanyInfo, User, UserRole, ApplicationStatus
+from models import CompanyInfo, User, UserRole, ApplicationStatus, ChatSession, ChatMessage, CompanyOnboarding, Product, ChatSessionStatus
 from schemas import (
     CompanyInfoCreate, CompanyInfoResponse,
     UserRegister, UserLogin, TokenResponse, UserResponse, ReviewAction,
-    PasswordResetRequest, PasswordResetConfirm
+    PasswordResetRequest, PasswordResetConfirm,
+    ChatMessageCreate, ChatResponse, ChatSessionResponse, ChatMessageResponse,
+    OnboardingDataResponse
 )
 from config import get_settings
 from auth import (
     get_password_hash, authenticate_user, create_access_token,
     get_current_active_user, require_admin
 )
+from chatbot_handler import ChatbotHandler
+from ai_chatbot_handler import AIChatbotHandler
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -472,6 +476,251 @@ async def get_admin_stats(
         "approved": approved,
         "rejected": rejected
     }
+
+
+# ============== Chatbot Endpoints ==============
+
+@app.post("/api/chatbot/message", response_model=ChatResponse)
+async def send_chatbot_message(
+    chat_data: ChatMessageCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Send a message to the onboarding chatbot
+
+    - **message**: User's message to the chatbot
+    - **session_id**: Optional session ID to continue an existing conversation
+
+    Requires: Authentication
+    Returns: Chatbot response with session information
+    """
+    try:
+        # Choose handler based on configuration
+        settings = get_settings()
+        use_ai = settings.use_ai_chatbot and settings.openai_api_key
+
+        # Initialize appropriate chatbot handler
+        if use_ai:
+            handler = AIChatbotHandler(db, current_user.id, chat_data.session_id)
+            ai_mode = " 🤖 (AI模式)"
+        else:
+            handler = ChatbotHandler(db, current_user.id, chat_data.session_id)
+            ai_mode = ""
+
+        # Create new session if needed
+        if not handler.session:
+            session = handler.create_session()
+            # Send welcome message
+            if use_ai:
+                welcome_message = (
+                    "您好！我是企業導入 AI 助理 🤖\n\n"
+                    "我將用智能對話的方式協助您建立公司資料。您可以用自然的方式告訴我：\n"
+                    "• 公司基本資料（ID、名稱、產業別、國家、地址等）\n"
+                    "• 公司規模與認證資料\n"
+                    "• 產品資訊\n\n"
+                    "您可以一次提供多個資訊，我會自動理解並記錄。\n"
+                    "讓我們開始吧！請告訴我您的公司資料。"
+                )
+            else:
+                welcome_message = (
+                    "您好！我是企業導入助理 👋\n\n"
+                    "我將協助您建立公司資料。我會逐步引導您輸入以下資訊：\n"
+                    "• 公司基本資料（ID、名稱、產業別、國家、地址等）\n"
+                    "• 公司規模與認證資料\n"
+                    "• 產品資訊\n\n"
+                    "讓我們開始吧！首先，請問您的公司ID（統一編號）是什麼？"
+                )
+            handler.add_message("assistant", welcome_message)
+
+            return ChatResponse(
+                session_id=session.id,
+                message=welcome_message,
+                completed=False,
+                progress=handler.get_progress()
+            )
+
+        # Save user message
+        handler.add_message("user", chat_data.message)
+
+        # Process message and get response
+        bot_response, is_completed = handler.process_message(chat_data.message)
+
+        # Save bot response
+        handler.add_message("assistant", bot_response)
+
+        return ChatResponse(
+            session_id=handler.session.id,
+            message=bot_response,
+            completed=is_completed,
+            progress=handler.get_progress()
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while processing your message: {str(e)}"
+        )
+
+
+@app.get("/api/chatbot/sessions", response_model=List[ChatSessionResponse])
+async def get_user_chat_sessions(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all chat sessions for the current user
+
+    Requires: Authentication
+    Returns: List of user's chat sessions
+    """
+    sessions = db.query(ChatSession).filter(
+        ChatSession.user_id == current_user.id
+    ).order_by(ChatSession.created_at.desc()).all()
+
+    return [session.to_dict() for session in sessions]
+
+
+@app.get("/api/chatbot/sessions/{session_id}/messages", response_model=List[ChatMessageResponse])
+async def get_session_messages(
+    session_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all messages for a specific chat session
+
+    - **session_id**: The ID of the chat session
+
+    Requires: Authentication
+    Authorization: Users can only view their own sessions
+    """
+    # Verify session belongs to user
+    session = db.query(ChatSession).filter(
+        ChatSession.id == session_id,
+        ChatSession.user_id == current_user.id
+    ).first()
+
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chat session not found"
+        )
+
+    messages = db.query(ChatMessage).filter(
+        ChatMessage.session_id == session_id
+    ).order_by(ChatMessage.created_at).all()
+
+    return [msg.to_dict() for msg in messages]
+
+
+@app.get("/api/chatbot/data/{session_id}", response_model=OnboardingDataResponse)
+async def get_onboarding_data(
+    session_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get the onboarding data collected in a chat session
+
+    - **session_id**: The ID of the chat session
+
+    Requires: Authentication
+    Authorization: Users can only view their own data
+    """
+    # Verify session belongs to user
+    session = db.query(ChatSession).filter(
+        ChatSession.id == session_id,
+        ChatSession.user_id == current_user.id
+    ).first()
+
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chat session not found"
+        )
+
+    onboarding_data = db.query(CompanyOnboarding).filter(
+        CompanyOnboarding.chat_session_id == session_id
+    ).first()
+
+    if not onboarding_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No onboarding data found for this session"
+        )
+
+    return onboarding_data.to_dict()
+
+
+@app.get("/api/chatbot/export/{session_id}")
+async def export_onboarding_data(
+    session_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Export onboarding data in the specified JSON format
+
+    - **session_id**: The ID of the chat session
+
+    Requires: Authentication
+    Authorization: Users can only export their own data
+    Returns: Data in the Chinese field name format
+    """
+    # Verify session belongs to user
+    session = db.query(ChatSession).filter(
+        ChatSession.id == session_id,
+        ChatSession.user_id == current_user.id
+    ).first()
+
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chat session not found"
+        )
+
+    onboarding_data = db.query(CompanyOnboarding).filter(
+        CompanyOnboarding.chat_session_id == session_id
+    ).first()
+
+    if not onboarding_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No onboarding data found for this session"
+        )
+
+    # Return data in export format
+    return onboarding_data.to_export_format()
+
+
+@app.get("/api/chatbot/export/all")
+async def export_all_onboarding_data(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Export all completed onboarding data for the current user
+
+    Requires: Authentication
+    Returns: Array of all user's completed onboarding data in Chinese field name format
+    """
+    # Get all completed sessions for user
+    completed_sessions = db.query(ChatSession).filter(
+        ChatSession.user_id == current_user.id,
+        ChatSession.status == ChatSessionStatus.COMPLETED
+    ).all()
+
+    export_data = []
+    for session in completed_sessions:
+        onboarding_data = db.query(CompanyOnboarding).filter(
+            CompanyOnboarding.chat_session_id == session.id
+        ).first()
+
+        if onboarding_data:
+            export_data.append(onboarding_data.to_export_format())
+
+    return export_data
 
 
 if __name__ == "__main__":

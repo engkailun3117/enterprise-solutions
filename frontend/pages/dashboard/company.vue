@@ -6,6 +6,89 @@
         <p class="page-subtitle">上次更新：{{ lastUpdated }}</p>
       </div>
 
+      <!-- AI Onboarding Chatbot Section -->
+      <div class="section-card chatbot-section">
+        <div class="section-header">
+          <h2 class="section-title">🤖 企業導入 AI 助理</h2>
+          <button class="btn-link" @click="toggleChatbot">
+            {{ showChatbot ? '收起' : '展開' }}
+          </button>
+        </div>
+
+        <div v-if="showChatbot" class="chatbot-container">
+          <div class="chat-messages" ref="chatMessages">
+            <div
+              v-for="message in messages"
+              :key="message.id"
+              :class="['message', message.role]"
+            >
+              <div class="message-content">
+                <div class="message-text">{{ message.content }}</div>
+                <div class="message-time">{{ formatTime(message.created_at) }}</div>
+              </div>
+            </div>
+            <div v-if="isLoading" class="message assistant">
+              <div class="message-content">
+                <div class="typing-indicator">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="progress" class="progress-bar">
+            <div class="progress-info">
+              <span>資料收集進度：{{ progress.fields_completed }}/{{ progress.total_fields }} 欄位</span>
+              <span v-if="progress.products_count > 0">・{{ progress.products_count }} 個產品</span>
+            </div>
+            <div class="progress-track">
+              <div
+                class="progress-fill"
+                :style="{ width: `${(progress.fields_completed / progress.total_fields) * 100}%` }"
+              ></div>
+            </div>
+          </div>
+
+          <div class="chat-actions">
+            <button
+              v-if="sessionId && !chatCompleted"
+              class="btn-secondary btn-sm"
+              @click="exportData"
+              :disabled="!progress?.company_info_complete"
+            >
+              匯出 JSON
+            </button>
+            <button
+              v-if="sessionId"
+              class="btn-secondary btn-sm"
+              @click="startNewSession"
+            >
+              新對話
+            </button>
+          </div>
+
+          <div class="chat-input-container">
+            <textarea
+              v-model="userMessage"
+              class="chat-input"
+              placeholder="在此輸入訊息... (Enter 發送，Shift+Enter 換行)"
+              @keydown="handleKeydown"
+              :disabled="isLoading || chatCompleted"
+              rows="1"
+            ></textarea>
+            <button
+              class="btn-send"
+              @click="sendMessage"
+              :disabled="!userMessage.trim() || isLoading || chatCompleted"
+            >
+              發送
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Company Identity Section -->
       <div class="section-card">
         <div class="section-header">
@@ -103,6 +186,7 @@
 
 <script setup lang="ts">
 const toast = useToast()
+const api = useApi()
 
 const lastUpdated = ref('2023/12/20 由 Alex Chen')
 
@@ -112,6 +196,35 @@ const companyData = ref({
   taxId: '82918455',
   website: 'www.gsa-consulting.ai'
 })
+
+// Chatbot state
+const showChatbot = ref(true)
+const sessionId = ref<number | null>(null)
+const messages = ref<any[]>([])
+const userMessage = ref('')
+const isLoading = ref(false)
+const chatCompleted = ref(false)
+const progress = ref<any>(null)
+const chatMessages = ref<HTMLElement | null>(null)
+
+// Session persistence functions
+const loadSavedSession = () => {
+  if (typeof window === 'undefined') return null
+  const saved = localStorage.getItem('chatbot_session_id')
+  return saved ? parseInt(saved) : null
+}
+
+const saveSessionId = (id: number) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('chatbot_session_id', id.toString())
+  }
+}
+
+const clearSavedSession = () => {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('chatbot_session_id')
+  }
+}
 
 const taxIdValid = computed(() => {
   return /^\d{8}$/.test(companyData.value.taxId)
@@ -127,6 +240,285 @@ const companyInitials = computed(() => {
       .slice(0, 2)
   }
   return 'GS'
+})
+
+// Chatbot functions
+const toggleChatbot = () => {
+  showChatbot.value = !showChatbot.value
+}
+
+const formatTime = (timestamp: string) => {
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  return date.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })
+}
+
+const scrollToBottom = () => {
+  nextTick(() => {
+    if (chatMessages.value) {
+      chatMessages.value.scrollTop = chatMessages.value.scrollHeight
+    }
+  })
+}
+
+const handleKeydown = (event: KeyboardEvent) => {
+  // Enter without Shift = send message
+  // Shift+Enter = line break (default textarea behavior)
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault() // Prevent default line break
+    sendMessage()
+  } else {
+    // Auto-grow textarea on input
+    nextTick(() => {
+      const textarea = event.target as HTMLTextAreaElement
+      textarea.style.height = 'auto'
+      textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px'
+    })
+  }
+}
+
+const sendMessage = async () => {
+  if (!userMessage.value.trim() || isLoading.value || chatCompleted.value) return
+
+  const messageText = userMessage.value.trim()
+  userMessage.value = ''
+  isLoading.value = true
+
+  // Reset textarea height
+  nextTick(() => {
+    const textarea = document.querySelector('.chat-input') as HTMLTextAreaElement
+    if (textarea) {
+      textarea.style.height = 'auto'
+    }
+  })
+
+  try {
+    const response = await api.post('/api/chatbot/message', {
+      message: messageText,
+      session_id: sessionId.value
+    })
+
+    // Store session ID if new session
+    if (!sessionId.value) {
+      sessionId.value = response.session_id
+      saveSessionId(response.session_id) // Persist to localStorage
+    }
+
+    // Add user message
+    messages.value.push({
+      id: Date.now(),
+      role: 'user',
+      content: messageText,
+      created_at: new Date().toISOString()
+    })
+
+    // Add bot response
+    messages.value.push({
+      id: Date.now() + 1,
+      role: 'assistant',
+      content: response.message,
+      created_at: new Date().toISOString()
+    })
+
+    // Update progress and completion status
+    progress.value = response.progress
+    chatCompleted.value = response.completed
+
+    if (response.completed) {
+      toast.add({
+        title: '完成',
+        description: '公司資料收集已完成！',
+        color: 'green'
+      })
+    }
+
+    scrollToBottom()
+  } catch (error: any) {
+    console.error('Error sending message:', error)
+    toast.add({
+      title: '錯誤',
+      description: error.message || '發送訊息失敗',
+      color: 'red'
+    })
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const startNewSession = async () => {
+  sessionId.value = null
+  messages.value = []
+  chatCompleted.value = false
+  progress.value = null
+  clearSavedSession()
+
+  // Initialize new session with welcome message
+  try {
+    const response = await api.post('/api/chatbot/message', {
+      message: '',
+      session_id: null
+    })
+
+    sessionId.value = response.session_id
+    saveSessionId(response.session_id)
+
+    messages.value.push({
+      id: Date.now(),
+      role: 'assistant',
+      content: response.message,
+      created_at: new Date().toISOString()
+    })
+
+    progress.value = response.progress
+    chatCompleted.value = response.completed
+
+    scrollToBottom()
+  } catch (error: any) {
+    console.error('Error starting new session:', error)
+    toast.add({
+      title: '錯誤',
+      description: '無法啟動新對話',
+      color: 'red'
+    })
+  }
+}
+
+const exportData = async () => {
+  if (!sessionId.value) return
+
+  try {
+    const data = await api.get(`/api/chatbot/export/${sessionId.value}`)
+
+    // Download as JSON file
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `company-data-${sessionId.value}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+
+    toast.add({
+      title: '匯出成功',
+      description: 'JSON 檔案已下載',
+      color: 'green'
+    })
+  } catch (error: any) {
+    console.error('Error exporting data:', error)
+    toast.add({
+      title: '錯誤',
+      description: '匯出資料失敗',
+      color: 'red'
+    })
+  }
+}
+
+// Auto-start chatbot on mount
+onMounted(async () => {
+  try {
+    // Check for saved session
+    const savedSessionId = loadSavedSession()
+
+    if (savedSessionId) {
+      // Try to load existing session
+      try {
+        // Load session messages
+        const sessionMessages = await api.getChatMessages(savedSessionId)
+
+        // Load session data to check if completed
+        const sessionData = await api.getOnboardingData(savedSessionId)
+
+        // Restore session state
+        sessionId.value = savedSessionId
+        messages.value = sessionMessages.map((msg: any) => ({
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          created_at: msg.created_at
+        }))
+
+        // Calculate progress
+        const onboardingData = sessionData.onboarding_data
+        let fieldsCompleted = 0
+        const totalFields = 10
+
+        if (onboardingData.company_id) fieldsCompleted++
+        if (onboardingData.company_name) fieldsCompleted++
+        if (onboardingData.industry) fieldsCompleted++
+        if (onboardingData.country) fieldsCompleted++
+        if (onboardingData.address) fieldsCompleted++
+        if (onboardingData.capital_amount !== null) fieldsCompleted++
+        if (onboardingData.invention_patent_count !== null) fieldsCompleted++
+        if (onboardingData.utility_patent_count !== null) fieldsCompleted++
+        if (onboardingData.certification_count !== null) fieldsCompleted++
+        if (onboardingData.esg_certification !== null) fieldsCompleted++
+
+        progress.value = {
+          company_info_complete: fieldsCompleted === totalFields,
+          fields_completed: fieldsCompleted,
+          total_fields: totalFields,
+          products_count: onboardingData.products?.length || 0
+        }
+
+        chatCompleted.value = sessionData.status === 'completed'
+
+        scrollToBottom()
+
+        console.log('Session restored:', savedSessionId)
+      } catch (error: any) {
+        // If session doesn't exist or error loading, clear and start new
+        console.log('Could not restore session, starting new:', error.message)
+        clearSavedSession()
+
+        // Start new session
+        const response = await api.post('/api/chatbot/message', {
+          message: '',
+          session_id: null
+        })
+
+        sessionId.value = response.session_id
+        saveSessionId(response.session_id)
+
+        messages.value.push({
+          id: Date.now(),
+          role: 'assistant',
+          content: response.message,
+          created_at: new Date().toISOString()
+        })
+
+        progress.value = response.progress
+        chatCompleted.value = response.completed
+
+        scrollToBottom()
+      }
+    } else {
+      // No saved session, start new one
+      const response = await api.post('/api/chatbot/message', {
+        message: '',
+        session_id: null
+      })
+
+      sessionId.value = response.session_id
+      saveSessionId(response.session_id)
+
+      messages.value.push({
+        id: Date.now(),
+        role: 'assistant',
+        content: response.message,
+        created_at: new Date().toISOString()
+      })
+
+      progress.value = response.progress
+      chatCompleted.value = response.completed
+
+      scrollToBottom()
+    }
+  } catch (error: any) {
+    // Silently fail if user is not logged in
+    console.log('Chatbot initialization skipped:', error.message)
+  }
 })
 
 const validateTaxId = () => {
@@ -401,6 +793,240 @@ const handleCancel = () => {
 
   .form-row-2 {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Chatbot Styles */
+.chatbot-section {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.chatbot-section .section-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.chatbot-section .section-title {
+  color: white;
+}
+
+.chatbot-section .btn-link {
+  color: white;
+  opacity: 1;
+  cursor: pointer;
+}
+
+.chatbot-container {
+  margin-top: 20px;
+}
+
+.chat-messages {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  max-height: 500px;
+  overflow-y: auto;
+  margin-bottom: 16px;
+}
+
+.message {
+  display: flex;
+  margin-bottom: 16px;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message.user {
+  justify-content: flex-end;
+}
+
+.message.assistant {
+  justify-content: flex-start;
+}
+
+.message-content {
+  max-width: 70%;
+}
+
+.message.user .message-content {
+  background: #d14d41;
+  color: white;
+  border-radius: 18px 18px 4px 18px;
+  padding: 12px 16px;
+}
+
+.message.assistant .message-content {
+  background: #f5f5f5;
+  color: #1a1a2e;
+  border-radius: 18px 18px 18px 4px;
+  padding: 12px 16px;
+}
+
+.message-text {
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.message-time {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-top: 4px;
+  text-align: right;
+}
+
+.message.assistant .message-time {
+  text-align: left;
+}
+
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #999;
+  animation: typing 1.4s infinite;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.7;
+  }
+  30% {
+    transform: translateY(-10px);
+    opacity: 1;
+  }
+}
+
+.progress-bar {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  margin-bottom: 8px;
+  color: white;
+}
+
+.progress-track {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: white;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.chat-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.btn-sm {
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+.chat-input-container {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.chat-input {
+  flex: 1;
+  padding: 12px 16px;
+  font-size: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #1a1a2e;
+  transition: all 0.3s;
+  font-family: inherit;
+  line-height: 1.5;
+  min-height: 44px;
+  max-height: 150px;
+  resize: none;
+  overflow-y: auto;
+}
+
+.chat-input:focus {
+  outline: none;
+  background: white;
+  border-color: white;
+}
+
+.chat-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-send {
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 24px;
+  background: white;
+  color: #667eea;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s;
+  white-space: nowrap;
+}
+
+.btn-send:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.btn-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .message-content {
+    max-width: 85%;
+  }
+
+  .chat-messages {
+    max-height: 400px;
   }
 }
 </style>

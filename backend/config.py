@@ -9,6 +9,11 @@ class Settings(BaseSettings):
     api_port: int = 8000
     secret_key: str = "your-secret-key-change-this-in-production-please-use-a-random-string"
 
+    # OpenAI Configuration
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"  # Cost-effective and powerful
+    use_ai_chatbot: bool = True  # Toggle AI vs rule-based
+
     # Modern Pydantic V2 configuration
     model_config = SettingsConfigDict(
         env_file=".env",
