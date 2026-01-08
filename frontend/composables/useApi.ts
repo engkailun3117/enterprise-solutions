@@ -250,6 +250,24 @@ export const useApi = () => {
     return response
   }
 
+  const getLatestActiveSession = async () => {
+    const response = await $fetch('/api/chatbot/sessions/latest', {
+      method: 'GET',
+      baseURL,
+      headers: getAuthHeaders()
+    })
+    return response
+  }
+
+  const createNewSessionWithContext = async () => {
+    const response = await $fetch('/api/chatbot/sessions/new', {
+      method: 'POST',
+      baseURL,
+      headers: getAuthHeaders()
+    })
+    return response
+  }
+
   const getChatMessages = async (sessionId: number) => {
     const response = await $fetch(`/api/chatbot/sessions/${sessionId}/messages`, {
       method: 'GET',
@@ -281,6 +299,21 @@ export const useApi = () => {
     const response = await $fetch('/api/chatbot/export/all', {
       method: 'GET',
       baseURL,
+      headers: getAuthHeaders()
+    })
+    return response
+  }
+
+  const submitChatbotApplication = async (data: {
+    session_id?: number
+    company_head?: string
+    company_email?: string
+    company_link?: string
+  } = {}) => {
+    const response = await $fetch('/api/chatbot/submit-application', {
+      method: 'POST',
+      baseURL,
+      body: data,
       headers: getAuthHeaders()
     })
     return response
@@ -326,10 +359,13 @@ export const useApi = () => {
     // Chatbot
     sendChatMessage,
     getChatSessions,
+    getLatestActiveSession,
+    createNewSessionWithContext,
     getChatMessages,
     getOnboardingData,
     exportOnboardingData,
     exportAllOnboardingData,
+    submitChatbotApplication,
     // Generic
     post,
     get

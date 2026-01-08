@@ -89,14 +89,91 @@
         </div>
       </div>
 
+      <!-- Company Application Status Section -->
+      <div v-if="sessionId && progress?.company_info_complete" class="section-card application-section">
+        <div class="section-header">
+          <h2 class="section-title">📨 提交公司申請</h2>
+          <span v-if="companyApplication" :class="['status-badge', companyApplication.status]">
+            {{ getStatusText(companyApplication.status) }}
+          </span>
+        </div>
+
+        <div class="application-content">
+          <div v-if="!companyApplication" class="application-prompt">
+            <p>您已完成所有資料填寫！點擊下方按鈕提交正式申請。</p>
+            <button class="btn-primary" @click="submitApplication" :disabled="isSubmitting">
+              {{ isSubmitting ? '提交中...' : '提交申請' }}
+            </button>
+          </div>
+
+          <div v-else class="application-details">
+            <div class="detail-grid">
+              <div class="detail-item">
+                <label>公司名稱</label>
+                <p>{{ companyApplication.company_name }}</p>
+              </div>
+              <div class="detail-item">
+                <label>公司ID</label>
+                <p>{{ companyApplication.company_id }}</p>
+              </div>
+              <div class="detail-item">
+                <label>負責人</label>
+                <p>{{ companyApplication.company_head }}</p>
+              </div>
+              <div class="detail-item">
+                <label>聯絡 Email</label>
+                <p>{{ companyApplication.company_email }}</p>
+              </div>
+              <div class="detail-item">
+                <label>公司網址</label>
+                <p>{{ companyApplication.company_link || '未提供' }}</p>
+              </div>
+              <div class="detail-item">
+                <label>申請狀態</label>
+                <p :class="['status-text', companyApplication.status]">
+                  {{ getStatusText(companyApplication.status) }}
+                </p>
+              </div>
+              <div v-if="companyApplication.created_at" class="detail-item">
+                <label>提交時間</label>
+                <p>{{ formatDateTime(companyApplication.created_at) }}</p>
+              </div>
+              <div v-if="companyApplication.reviewed_at" class="detail-item">
+                <label>審核時間</label>
+                <p>{{ formatDateTime(companyApplication.reviewed_at) }}</p>
+              </div>
+            </div>
+
+            <div v-if="companyApplication.status === 'rejected' && companyApplication.rejection_reason" class="rejection-reason">
+              <label>拒絕原因</label>
+              <p>{{ companyApplication.rejection_reason }}</p>
+            </div>
+
+            <div class="application-actions">
+              <button v-if="companyApplication.status !== 'approved'" class="btn-secondary" @click="submitApplication" :disabled="isSubmitting">
+                {{ isSubmitting ? '更新中...' : '重新提交申請' }}
+              </button>
+              <button class="btn-link" @click="refreshApplicationStatus">
+                刷新狀態
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Company Identity Section -->
       <div class="section-card">
         <div class="section-header">
           <h2 class="section-title">🏢 企業識別資訊 (Identity)</h2>
-          <button class="btn-link" disabled>儲存目前的此狀態</button>
+          <p v-if="lastUpdated" class="last-updated">最後更新：{{ lastUpdated }}</p>
         </div>
 
-        <div class="company-identity">
+        <div v-if="isLoadingCompanyData" class="loading-state">
+          <div class="spinner"></div>
+          <p>載入公司資料中...</p>
+        </div>
+
+        <div v-else class="company-identity">
           <!-- Logo Upload -->
           <div class="logo-upload-section">
             <div class="logo-preview">
@@ -162,6 +239,70 @@
         </div>
       </div>
 
+      <!-- Company Details Section (From Chatbot/Database) -->
+      <div v-if="!isLoadingCompanyData && (companyData.industry || companyData.country)" class="section-card">
+        <div class="section-header">
+          <h2 class="section-title">📊 公司詳細資料</h2>
+          <p class="section-subtitle">由 AI 助理收集的公司資訊</p>
+        </div>
+
+        <div class="company-details-grid">
+          <div v-if="companyData.industry" class="detail-card">
+            <div class="detail-label">產業別</div>
+            <div class="detail-value">{{ companyData.industry }}</div>
+          </div>
+
+          <div v-if="companyData.country" class="detail-card">
+            <div class="detail-label">國家</div>
+            <div class="detail-value">{{ companyData.country }}</div>
+          </div>
+
+          <div v-if="companyData.address" class="detail-card">
+            <div class="detail-label">地址</div>
+            <div class="detail-value">{{ companyData.address }}</div>
+          </div>
+
+          <div v-if="companyData.capitalAmount !== null" class="detail-card">
+            <div class="detail-label">資本總額</div>
+            <div class="detail-value">{{ companyData.capitalAmount }} 億</div>
+          </div>
+
+          <div v-if="companyData.inventionPatentCount !== null" class="detail-card">
+            <div class="detail-label">發明專利數量</div>
+            <div class="detail-value">{{ companyData.inventionPatentCount }} 件</div>
+          </div>
+
+          <div v-if="companyData.utilityPatentCount !== null" class="detail-card">
+            <div class="detail-label">新型專利數量</div>
+            <div class="detail-value">{{ companyData.utilityPatentCount }} 件</div>
+          </div>
+
+          <div v-if="companyData.certificationCount !== null" class="detail-card">
+            <div class="detail-label">公司認證資料數量</div>
+            <div class="detail-value">{{ companyData.certificationCount }} 件</div>
+          </div>
+
+          <div v-if="companyData.esgCertification !== null" class="detail-card">
+            <div class="detail-label">ESG 相關認證</div>
+            <div class="detail-value">{{ companyData.esgCertification ? '有' : '無' }}</div>
+          </div>
+        </div>
+
+        <!-- Products Section -->
+        <div v-if="companyData.products && companyData.products.length > 0" class="products-section">
+          <h3 class="products-title">產品列表 ({{ companyData.products.length }} 個產品)</h3>
+          <div class="products-grid">
+            <div v-for="(product, index) in companyData.products" :key="index" class="product-card">
+              <div class="product-number">產品 {{ index + 1 }}</div>
+              <div class="product-info">
+                <div class="product-name">{{ product.product_name }}</div>
+                <div class="product-category">{{ product.product_category }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- AI Strategy Settings Section -->
       <div class="section-card">
         <div class="section-header">
@@ -185,16 +326,30 @@
 </template>
 
 <script setup lang="ts">
+definePageMeta({
+  middleware: 'auth'
+})
+
 const toast = useToast()
 const api = useApi()
 
-const lastUpdated = ref('2023/12/20 由 Alex Chen')
+const lastUpdated = ref('')
+const isLoadingCompanyData = ref(true)
 
 const companyData = ref({
-  nameCN: '全球策略顧問股份有限公司',
-  nameEN: 'Global Strategy Advisors Inc.',
-  taxId: '82918455',
-  website: 'www.gsa-consulting.ai'
+  nameCN: '',
+  nameEN: '',
+  taxId: '',
+  website: '',
+  industry: '',
+  country: '',
+  address: '',
+  capitalAmount: null as number | null,
+  inventionPatentCount: null as number | null,
+  utilityPatentCount: null as number | null,
+  certificationCount: null as number | null,
+  esgCertification: null as boolean | null,
+  products: [] as any[]
 })
 
 // Chatbot state
@@ -206,6 +361,10 @@ const isLoading = ref(false)
 const chatCompleted = ref(false)
 const progress = ref<any>(null)
 const chatMessages = ref<HTMLElement | null>(null)
+
+// Company application state
+const companyApplication = ref<any>(null)
+const isSubmitting = ref(false)
 
 // Session persistence functions
 const loadSavedSession = () => {
@@ -352,12 +511,10 @@ const startNewSession = async () => {
   progress.value = null
   clearSavedSession()
 
-  // Initialize new session with welcome message
+  // Initialize new session with context from previous session
   try {
-    const response = await api.post('/api/chatbot/message', {
-      message: '',
-      session_id: null
-    })
+    // Use smart session creation that copies company info from latest session
+    const response = await api.createNewSessionWithContext()
 
     sessionId.value = response.session_id
     saveSessionId(response.session_id)
@@ -371,6 +528,15 @@ const startNewSession = async () => {
 
     progress.value = response.progress
     chatCompleted.value = response.completed
+
+    // Show notification if company info was copied
+    if (response.company_info_copied) {
+      toast.add({
+        title: '已載入公司資料',
+        description: '上次的公司資訊已自動載入，您可以直接更新或確認',
+        color: 'green'
+      })
+    }
 
     scrollToBottom()
   } catch (error: any) {
@@ -415,64 +581,271 @@ const exportData = async () => {
   }
 }
 
+// Company application functions
+const submitApplication = async () => {
+  if (!sessionId.value) return
+
+  isSubmitting.value = true
+  try {
+    const result = await api.submitChatbotApplication({
+      session_id: sessionId.value
+    })
+
+    companyApplication.value = result
+
+    toast.add({
+      title: '提交成功',
+      description: '您的公司申請已提交，請等待審核',
+      color: 'green'
+    })
+  } catch (error: any) {
+    console.error('Error submitting application:', error)
+    toast.add({
+      title: '提交失敗',
+      description: error.data?.detail || error.message || '無法提交申請',
+      color: 'red'
+    })
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+const refreshApplicationStatus = async () => {
+  try {
+    const result = await api.getMyApplication()
+    companyApplication.value = result.data
+
+    toast.add({
+      title: '已刷新',
+      description: '申請狀態已更新',
+      color: 'blue'
+    })
+  } catch (error: any) {
+    // If 404, it means no application exists yet
+    if (error.status === 404 || error.statusCode === 404) {
+      companyApplication.value = null
+    } else {
+      console.error('Error refreshing application:', error)
+      toast.add({
+        title: '刷新失敗',
+        description: error.data?.detail || error.message || '無法取得申請狀態',
+        color: 'red'
+      })
+    }
+  }
+}
+
+const getStatusText = (status: string) => {
+  const statusMap: Record<string, string> = {
+    pending: '審核中',
+    approved: '已核准',
+    rejected: '已拒絕'
+  }
+  return statusMap[status] || status
+}
+
+const formatDateTime = (dateStr: string) => {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  return date.toLocaleString('zh-TW', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+// Load company data from database
+const loadCompanyData = async (onboardingData: any) => {
+  if (!onboardingData) return
+
+  // Populate company data from onboarding data
+  companyData.value = {
+    nameCN: onboardingData.company_name || '',
+    nameEN: '', // Not collected by chatbot yet
+    taxId: onboardingData.company_id || '',
+    website: '', // Not collected by chatbot yet
+    industry: onboardingData.industry || '',
+    country: onboardingData.country || '',
+    address: onboardingData.address || '',
+    capitalAmount: onboardingData.capital_amount,
+    inventionPatentCount: onboardingData.invention_patent_count,
+    utilityPatentCount: onboardingData.utility_patent_count,
+    certificationCount: onboardingData.certification_count,
+    esgCertification: onboardingData.esg_certification,
+    products: onboardingData.products || []
+  }
+
+  // Update last updated time
+  if (onboardingData.updated_at) {
+    const date = new Date(onboardingData.updated_at)
+    lastUpdated.value = date.toLocaleString('zh-TW', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  isLoadingCompanyData.value = false
+}
+
 // Auto-start chatbot on mount
 onMounted(async () => {
   try {
-    // Check for saved session
+    // Helper function to load session by ID
+    const loadSessionById = async (id: number) => {
+      // Load session messages
+      const sessionMessages = await api.getChatMessages(id)
+
+      // Load session data to check if completed
+      const sessionData = await api.getOnboardingData(id)
+
+      // Restore session state
+      sessionId.value = id
+      messages.value = sessionMessages.map((msg: any) => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        created_at: msg.created_at
+      }))
+
+      // Calculate progress
+      const onboardingData = sessionData.onboarding_data
+      let fieldsCompleted = 0
+      const totalFields = 6  // Total number of company fields (excluding registration fields)
+
+      // Skip company_id, company_name, country, address (collected during registration)
+      if (onboardingData.industry) fieldsCompleted++
+      if (onboardingData.capital_amount !== null) fieldsCompleted++
+      if (onboardingData.invention_patent_count !== null) fieldsCompleted++
+      if (onboardingData.utility_patent_count !== null) fieldsCompleted++
+      if (onboardingData.certification_count !== null) fieldsCompleted++
+      if (onboardingData.esg_certification !== null) fieldsCompleted++
+
+      progress.value = {
+        company_info_complete: fieldsCompleted === totalFields,
+        fields_completed: fieldsCompleted,
+        total_fields: totalFields,
+        products_count: onboardingData.products?.length || 0
+      }
+
+      chatCompleted.value = sessionData.status === 'completed'
+
+      // Load company data into the form
+      await loadCompanyData(onboardingData)
+
+      scrollToBottom()
+
+      console.log('Session restored:', id)
+    }
+
+    // Check for saved session in localStorage
     const savedSessionId = loadSavedSession()
 
     if (savedSessionId) {
-      // Try to load existing session
+      // Try to load existing session from localStorage
       try {
-        // Load session messages
-        const sessionMessages = await api.getChatMessages(savedSessionId)
-
-        // Load session data to check if completed
-        const sessionData = await api.getOnboardingData(savedSessionId)
-
-        // Restore session state
-        sessionId.value = savedSessionId
-        messages.value = sessionMessages.map((msg: any) => ({
-          id: msg.id,
-          role: msg.role,
-          content: msg.content,
-          created_at: msg.created_at
-        }))
-
-        // Calculate progress
-        const onboardingData = sessionData.onboarding_data
-        let fieldsCompleted = 0
-        const totalFields = 10
-
-        if (onboardingData.company_id) fieldsCompleted++
-        if (onboardingData.company_name) fieldsCompleted++
-        if (onboardingData.industry) fieldsCompleted++
-        if (onboardingData.country) fieldsCompleted++
-        if (onboardingData.address) fieldsCompleted++
-        if (onboardingData.capital_amount !== null) fieldsCompleted++
-        if (onboardingData.invention_patent_count !== null) fieldsCompleted++
-        if (onboardingData.utility_patent_count !== null) fieldsCompleted++
-        if (onboardingData.certification_count !== null) fieldsCompleted++
-        if (onboardingData.esg_certification !== null) fieldsCompleted++
-
-        progress.value = {
-          company_info_complete: fieldsCompleted === totalFields,
-          fields_completed: fieldsCompleted,
-          total_fields: totalFields,
-          products_count: onboardingData.products?.length || 0
-        }
-
-        chatCompleted.value = sessionData.status === 'completed'
-
-        scrollToBottom()
-
-        console.log('Session restored:', savedSessionId)
+        await loadSessionById(savedSessionId)
       } catch (error: any) {
-        // If session doesn't exist or error loading, clear and start new
-        console.log('Could not restore session, starting new:', error.message)
+        // If localStorage session doesn't exist or error loading, try backend
+        console.log('Could not restore localStorage session:', error.message)
         clearSavedSession()
 
-        // Start new session
+        // Try to get latest active session from backend
+        try {
+          const latestSessionResponse = await api.getLatestActiveSession()
+
+          if (latestSessionResponse.session_id) {
+            // Found an active session on backend, restore it
+            console.log('Found latest active session from backend:', latestSessionResponse.session_id)
+            await loadSessionById(latestSessionResponse.session_id)
+            saveSessionId(latestSessionResponse.session_id)
+          } else {
+            // No active session found, start new one
+            console.log('No active session found, starting new session')
+            const response = await api.post('/api/chatbot/message', {
+              message: '',
+              session_id: null
+            })
+
+            sessionId.value = response.session_id
+            saveSessionId(response.session_id)
+
+            messages.value.push({
+              id: Date.now(),
+              role: 'assistant',
+              content: response.message,
+              created_at: new Date().toISOString()
+            })
+
+            progress.value = response.progress
+            chatCompleted.value = response.completed
+
+            scrollToBottom()
+          }
+        } catch (backendError: any) {
+          console.error('Error getting latest session from backend:', backendError)
+          // Fall back to creating new session
+          const response = await api.post('/api/chatbot/message', {
+            message: '',
+            session_id: null
+          })
+
+          sessionId.value = response.session_id
+          saveSessionId(response.session_id)
+
+          messages.value.push({
+            id: Date.now(),
+            role: 'assistant',
+            content: response.message,
+            created_at: new Date().toISOString()
+          })
+
+          progress.value = response.progress
+          chatCompleted.value = response.completed
+
+          scrollToBottom()
+        }
+      }
+    } else {
+      // No saved session in localStorage, check backend for latest active session
+      try {
+        const latestSessionResponse = await api.getLatestActiveSession()
+
+        if (latestSessionResponse.session_id) {
+          // Found an active session on backend, restore it
+          console.log('Found latest active session from backend:', latestSessionResponse.session_id)
+          await loadSessionById(latestSessionResponse.session_id)
+          saveSessionId(latestSessionResponse.session_id)
+        } else {
+          // No active session found, start new one
+          console.log('No active session found, starting new session')
+          const response = await api.post('/api/chatbot/message', {
+            message: '',
+            session_id: null
+          })
+
+          sessionId.value = response.session_id
+          saveSessionId(response.session_id)
+
+          messages.value.push({
+            id: Date.now(),
+            role: 'assistant',
+            content: response.message,
+            created_at: new Date().toISOString()
+          })
+
+          progress.value = response.progress
+          chatCompleted.value = response.completed
+
+          scrollToBottom()
+        }
+      } catch (backendError: any) {
+        console.error('Error getting latest session from backend:', backendError)
+        // Fall back to creating new session
         const response = await api.post('/api/chatbot/message', {
           message: '',
           session_id: null
@@ -493,31 +866,29 @@ onMounted(async () => {
 
         scrollToBottom()
       }
-    } else {
-      // No saved session, start new one
-      const response = await api.post('/api/chatbot/message', {
-        message: '',
-        session_id: null
-      })
+    }
 
-      sessionId.value = response.session_id
-      saveSessionId(response.session_id)
+    // Load company application status
+    try {
+      const result = await api.getMyApplication()
+      if (result.data) {
+        companyApplication.value = result.data
+      }
+    } catch (error: any) {
+      // If 404, user hasn't submitted an application yet - this is normal
+      if (error.status !== 404 && error.statusCode !== 404) {
+        console.error('Error loading application status:', error)
+      }
+    }
 
-      messages.value.push({
-        id: Date.now(),
-        role: 'assistant',
-        content: response.message,
-        created_at: new Date().toISOString()
-      })
-
-      progress.value = response.progress
-      chatCompleted.value = response.completed
-
-      scrollToBottom()
+    // If no session was loaded, mark company data loading as complete
+    if (!sessionId.value) {
+      isLoadingCompanyData.value = false
     }
   } catch (error: any) {
     // Silently fail if user is not logged in
     console.log('Chatbot initialization skipped:', error.message)
+    isLoadingCompanyData.value = false
   }
 })
 
@@ -1028,5 +1399,318 @@ const handleCancel = () => {
   .chat-messages {
     max-height: 400px;
   }
+}
+
+/* Application Section Styles */
+.application-section {
+  background: linear-gradient(135deg, #43cea2 0%, #185a9d 100%);
+  color: white;
+}
+
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-badge.pending {
+  background: rgba(255, 193, 7, 0.9);
+  color: #1a1a2e;
+}
+
+.status-badge.approved {
+  background: rgba(76, 175, 80, 0.9);
+  color: white;
+}
+
+.status-badge.rejected {
+  background: rgba(244, 67, 54, 0.9);
+  color: white;
+}
+
+.application-content {
+  padding: 16px 0;
+}
+
+.application-prompt {
+  text-align: center;
+  padding: 24px;
+}
+
+.application-prompt p {
+  font-size: 16px;
+  margin-bottom: 20px;
+  opacity: 0.95;
+}
+
+.application-prompt .btn-primary {
+  background: white;
+  color: #185a9d;
+  padding: 12px 32px;
+  border-radius: 24px;
+  font-size: 15px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.application-prompt .btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+}
+
+.application-prompt .btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.application-details {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.detail-item label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.8;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.detail-item p {
+  font-size: 15px;
+  font-weight: 500;
+  margin: 0;
+}
+
+.status-text {
+  padding: 4px 12px;
+  border-radius: 12px;
+  display: inline-block;
+  font-size: 14px;
+}
+
+.status-text.pending {
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+}
+
+.status-text.approved {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+}
+
+.status-text.rejected {
+  background: rgba(244, 67, 54, 0.2);
+  color: #f44336;
+}
+
+.rejection-reason {
+  background: rgba(244, 67, 54, 0.2);
+  border-left: 4px solid #f44336;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.rejection-reason label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #f44336;
+}
+
+.rejection-reason p {
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0;
+  color: white;
+}
+
+.application-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.application-actions .btn-secondary {
+  background: white;
+  color: #185a9d;
+  padding: 10px 24px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.application-actions .btn-secondary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.application-actions .btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.application-actions .btn-link {
+  background: transparent;
+  color: white;
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.application-actions .btn-link:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Loading State */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: #666;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.last-updated {
+  font-size: 13px;
+  color: #999;
+  margin: 0;
+}
+
+/* Company Details Grid */
+.company-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.detail-card {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid #e0e0e0;
+  transition: all 0.2s;
+}
+
+.detail-card:hover {
+  border-color: #667eea;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+}
+
+.detail-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.detail-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.section-subtitle {
+  font-size: 13px;
+  color: #999;
+  margin: 4px 0 0 0;
+}
+
+/* Products Section */
+.products-section {
+  margin-top: 32px;
+  padding-top: 32px;
+  border-top: 2px solid #e0e0e0;
+}
+
+.products-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin-bottom: 16px;
+}
+
+.products-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.product-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  padding: 20px;
+  color: white;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+  transition: all 0.3s;
+}
+
+.product-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.3);
+}
+
+.product-number {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.8;
+  margin-bottom: 8px;
+}
+
+.product-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.product-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.product-category {
+  font-size: 14px;
+  opacity: 0.9;
 }
 </style>

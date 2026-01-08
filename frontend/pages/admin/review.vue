@@ -213,6 +213,10 @@
 </template>
 
 <script setup lang="ts">
+definePageMeta({
+  middleware: 'admin'
+})
+
 const router = useRouter()
 const toast = useToast()
 const api = useApi()

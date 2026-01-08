@@ -16,7 +16,9 @@
 </template>
 
 <script setup lang="ts">
-// Placeholder page for notifications
+definePageMeta({
+  middleware: 'auth'
+})
 </script>
 
 <style scoped>

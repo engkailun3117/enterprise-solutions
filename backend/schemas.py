@@ -244,3 +244,21 @@ class OnboardingDataResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class SubmitChatbotApplicationRequest(BaseModel):
+    """Schema for submitting chatbot data as company application"""
+    session_id: Optional[int] = Field(None, description="Chat session ID (defaults to latest active session)")
+    company_head: Optional[str] = Field(None, max_length=80, description="負責人 (Person in Charge) - defaults to username")
+    company_email: Optional[EmailStr] = Field(None, max_length=50, description="聯絡 Email - defaults to user email")
+    company_link: Optional[str] = Field(None, max_length=200, description="公司網址 (Company Website)")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "session_id": 1,
+                "company_head": "林小明",
+                "company_email": "contact@company.com",
+                "company_link": "https://www.company.com"
+            }
+        }

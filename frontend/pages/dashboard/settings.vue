@@ -16,7 +16,9 @@
 </template>
 
 <script setup lang="ts">
-// Placeholder page for global settings
+definePageMeta({
+  middleware: 'auth'
+})
 </script>
 
 <style scoped>
