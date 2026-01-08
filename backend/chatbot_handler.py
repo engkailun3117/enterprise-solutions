@@ -116,16 +116,9 @@ class ChatbotHandler:
 
     def get_next_field_to_collect(self) -> Optional[str]:
         """Determine the next field to collect based on current data"""
-        if not self.onboarding_data.company_id:
-            return ConversationState.COMPANY_ID
-        if not self.onboarding_data.company_name:
-            return ConversationState.COMPANY_NAME
+        # Skip company_id, company_name, country, address (collected during registration)
         if not self.onboarding_data.industry:
             return ConversationState.INDUSTRY
-        if not self.onboarding_data.country:
-            return ConversationState.COUNTRY
-        if not self.onboarding_data.address:
-            return ConversationState.ADDRESS
         if self.onboarding_data.capital_amount is None:
             return ConversationState.CAPITAL_AMOUNT
         if self.onboarding_data.invention_patent_count is None:
@@ -149,23 +142,9 @@ class ChatbotHandler:
     def extract_and_save_data(self, user_message: str, field: str) -> bool:
         """Extract data from user message and save to database"""
         try:
-            if field == ConversationState.COMPANY_ID:
-                self.onboarding_data.company_id = user_message.strip()
-
-            elif field == ConversationState.COMPANY_NAME:
-                self.onboarding_data.company_name = user_message.strip()
-
-            elif field == ConversationState.INDUSTRY:
+            # Skip company_id, company_name, country, address (collected during registration)
+            if field == ConversationState.INDUSTRY:
                 self.onboarding_data.industry = user_message.strip()
-
-            elif field == ConversationState.COUNTRY:
-                country = user_message.strip()
-                self.onboarding_data.country = country
-                # Auto-set tax based on country
-                self.onboarding_data.tax = COUNTRY_TAX_MAPPING.get(country, 10)
-
-            elif field == ConversationState.ADDRESS:
-                self.onboarding_data.address = user_message.strip()
 
             elif field == ConversationState.CAPITAL_AMOUNT:
                 # Extract number from message
@@ -260,12 +239,9 @@ class ChatbotHandler:
 
     def get_prompt_for_field(self, field: str) -> str:
         """Get the chatbot prompt for collecting a specific field"""
+        # Skip company_id, company_name, country, address (collected during registration)
         prompts = {
-            ConversationState.COMPANY_ID: "請問您的公司ID（統一編號）是什麼？",
-            ConversationState.COMPANY_NAME: "請問您的公司名稱是什麼？",
             ConversationState.INDUSTRY: "請問您的公司所屬產業別是什麼？（例如：食品業、鋼鐵業、電子業等）",
-            ConversationState.COUNTRY: f"請問您的公司所在國家是什麼？\n\n可選擇：{', '.join(COUNTRY_TAX_MAPPING.keys())}",
-            ConversationState.ADDRESS: "請問您的公司地址是什麼？",
             ConversationState.CAPITAL_AMOUNT: "請問您的公司資本總額是多少億元？（請輸入數字）",
             ConversationState.INVENTION_PATENT_COUNT: "請問您的公司擁有多少件發明專利？（請輸入數字）",
             ConversationState.UTILITY_PATENT_COUNT: "請問您的公司擁有多少件新型專利？（請輸入數字）",
@@ -275,12 +251,8 @@ class ChatbotHandler:
 
 現在讓我們來新增產品資料。請依照以下格式提供產品資訊：
 
-產品ID：[您的產品ID]
 產品名稱：[產品名稱]
-價格：[價格]
-主要原料：[原料列表]
-產品規格(尺寸、精度)：[規格說明]
-技術優勢：[技術優勢說明]
+產品類別：[產品類別]
 
 您可以一次提供一個產品，完成後我會詢問是否還要繼續新增。
 如果不需要新增產品，請直接回答「不用」或「完成」。"""
@@ -347,17 +319,10 @@ class ChatbotHandler:
     def get_progress(self) -> Dict[str, Any]:
         """Get current progress of data collection"""
         fields_completed = 0
-        total_fields = 10  # Total number of company fields
+        total_fields = 6  # Total number of company fields (excluding registration fields)
 
-        if self.onboarding_data.company_id:
-            fields_completed += 1
-        if self.onboarding_data.company_name:
-            fields_completed += 1
+        # Skip company_id, company_name, country, address (collected during registration)
         if self.onboarding_data.industry:
-            fields_completed += 1
-        if self.onboarding_data.country:
-            fields_completed += 1
-        if self.onboarding_data.address:
             fields_completed += 1
         if self.onboarding_data.capital_amount is not None:
             fields_completed += 1

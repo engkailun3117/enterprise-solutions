@@ -111,12 +111,8 @@ class AIChatbotHandler:
         return """你是一個專業的企業導入助理，負責協助使用者建立公司資料。你的任務是：
 
 1. 用友善、專業的態度與使用者對話
-2. 從對話中提取以下公司資訊：
-   - 公司ID（統一編號）
-   - 公司名稱
+2. 從對話中提取以下公司資訊（公司ID、名稱、國家、地址已在註冊時收集，無需再問）：
    - 產業別（如：食品業、鋼鐵業、電子業等）
-   - 國家（台灣、中國、美國、日本等）
-   - 地址
    - 資本總額（以億元為單位）
    - 發明專利數量
    - 新型專利數量
@@ -124,20 +120,15 @@ class AIChatbotHandler:
    - ESG相關認證（有/無）
 
 3. 收集產品資訊（可以有多個產品）：
-   - 產品ID
    - 產品名稱
-   - 價格
-   - 主要原料
-   - 產品規格（尺寸、精度）
-   - 技術優勢
+   - 產品類別
 
 重要提示：
 - 如果使用者一次提供多個資訊，請一次提取所有資訊
 - 如果資訊不清楚，請禮貌地詢問
 - 當收集完所有資訊後，詢問使用者是否還要新增產品
 - 保持對話自然流暢
-
-可用國家列表：""" + ", ".join(COUNTRY_TAX_MAPPING.keys())
+- 不要詢問公司ID、公司名稱、國家、地址，這些已在註冊時收集"""
 
     def get_current_data_summary(self) -> str:
         """Get a summary of currently collected data"""
@@ -145,16 +136,9 @@ class AIChatbotHandler:
             return "尚未收集任何資料"
 
         data = []
-        if self.onboarding_data.company_id:
-            data.append(f"公司ID: {self.onboarding_data.company_id}")
-        if self.onboarding_data.company_name:
-            data.append(f"公司名稱: {self.onboarding_data.company_name}")
+        # Skip company_id, company_name, country, address (collected during registration)
         if self.onboarding_data.industry:
             data.append(f"產業別: {self.onboarding_data.industry}")
-        if self.onboarding_data.country:
-            data.append(f"國家: {self.onboarding_data.country}")
-        if self.onboarding_data.address:
-            data.append(f"地址: {self.onboarding_data.address}")
         if self.onboarding_data.capital_amount is not None:
             data.append(f"資本總額: {self.onboarding_data.capital_amount}億")
         if self.onboarding_data.invention_patent_count is not None:
@@ -200,15 +184,11 @@ class AIChatbotHandler:
                 "type": "function",
                 "function": {
                     "name": "update_company_data",
-                    "description": "更新公司資料。從使用者的訊息中提取資訊並更新。",
+                    "description": "更新公司資料。從使用者的訊息中提取資訊並更新。注意：公司ID、名稱、國家、地址已在註冊時收集，無需更新。",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "company_id": {"type": "string", "description": "公司ID或統一編號"},
-                            "company_name": {"type": "string", "description": "公司名稱"},
                             "industry": {"type": "string", "description": "產業別"},
-                            "country": {"type": "string", "description": "國家"},
-                            "address": {"type": "string", "description": "地址"},
                             "capital_amount": {"type": "integer", "description": "資本總額（億元）"},
                             "invention_patent_count": {"type": "integer", "description": "發明專利數量"},
                             "utility_patent_count": {"type": "integer", "description": "新型專利數量"},
@@ -291,27 +271,10 @@ class AIChatbotHandler:
         try:
             updated = False
 
-            if "company_id" in data and data["company_id"]:
-                self.onboarding_data.company_id = data["company_id"]
-                updated = True
-
-            if "company_name" in data and data["company_name"]:
-                self.onboarding_data.company_name = data["company_name"]
-                updated = True
+            # Skip company_id, company_name, country, address (collected during registration)
 
             if "industry" in data and data["industry"]:
                 self.onboarding_data.industry = data["industry"]
-                updated = True
-
-            if "country" in data and data["country"]:
-                country = data["country"]
-                self.onboarding_data.country = country
-                # Auto-set tax based on country
-                self.onboarding_data.tax = COUNTRY_TAX_MAPPING.get(country, 10)
-                updated = True
-
-            if "address" in data and data["address"]:
-                self.onboarding_data.address = data["address"]
                 updated = True
 
             if "capital_amount" in data and data["capital_amount"] is not None:
@@ -407,17 +370,10 @@ class AIChatbotHandler:
     def get_progress(self) -> Dict[str, Any]:
         """Get current progress of data collection"""
         fields_completed = 0
-        total_fields = 10
+        total_fields = 6  # Total number of company fields (excluding registration fields)
 
-        if self.onboarding_data.company_id:
-            fields_completed += 1
-        if self.onboarding_data.company_name:
-            fields_completed += 1
+        # Skip company_id, company_name, country, address (collected during registration)
         if self.onboarding_data.industry:
-            fields_completed += 1
-        if self.onboarding_data.country:
-            fields_completed += 1
-        if self.onboarding_data.address:
             fields_completed += 1
         if self.onboarding_data.capital_amount is not None:
             fields_completed += 1

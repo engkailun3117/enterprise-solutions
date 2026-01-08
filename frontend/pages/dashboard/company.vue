@@ -715,13 +715,10 @@ onMounted(async () => {
       // Calculate progress
       const onboardingData = sessionData.onboarding_data
       let fieldsCompleted = 0
-      const totalFields = 10
+      const totalFields = 6  // Total number of company fields (excluding registration fields)
 
-      if (onboardingData.company_id) fieldsCompleted++
-      if (onboardingData.company_name) fieldsCompleted++
+      // Skip company_id, company_name, country, address (collected during registration)
       if (onboardingData.industry) fieldsCompleted++
-      if (onboardingData.country) fieldsCompleted++
-      if (onboardingData.address) fieldsCompleted++
       if (onboardingData.capital_amount !== null) fieldsCompleted++
       if (onboardingData.invention_patent_count !== null) fieldsCompleted++
       if (onboardingData.utility_patent_count !== null) fieldsCompleted++
