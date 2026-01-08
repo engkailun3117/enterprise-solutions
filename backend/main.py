@@ -227,6 +227,21 @@ async def reset_password(
     }
 
 
+# ============== User Endpoints ==============
+
+@app.get("/api/users/me", response_model=UserResponse)
+async def get_user_profile(
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Get current user profile
+
+    Requires: Valid JWT token in Authorization header
+    Returns: Current user information
+    """
+    return current_user.to_dict()
+
+
 # ============== Company/Supplier Onboarding Endpoints ==============
 
 @app.post("/api/companies", response_model=CompanyInfoResponse, status_code=status.HTTP_201_CREATED)
