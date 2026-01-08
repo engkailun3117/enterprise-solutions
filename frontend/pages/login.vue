@@ -76,6 +76,10 @@
 </template>
 
 <script setup lang="ts">
+definePageMeta({
+  middleware: 'guest'
+})
+
 const router = useRouter()
 const toast = useToast()
 const api = useApi()

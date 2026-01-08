@@ -63,13 +63,11 @@
 </template>
 
 <script setup lang="ts">
-const router = useRouter()
-
-// Check authentication on mount
-onMounted(() => {
-  // TODO: Add proper authentication check
-  // For now, just a placeholder
+definePageMeta({
+  middleware: 'auth'
 })
+
+const router = useRouter()
 </script>
 
 <style scoped>
