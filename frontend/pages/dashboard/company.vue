@@ -165,10 +165,15 @@
       <div class="section-card">
         <div class="section-header">
           <h2 class="section-title">🏢 企業識別資訊 (Identity)</h2>
-          <button class="btn-link" disabled>儲存目前的此狀態</button>
+          <p v-if="lastUpdated" class="last-updated">最後更新：{{ lastUpdated }}</p>
         </div>
 
-        <div class="company-identity">
+        <div v-if="isLoadingCompanyData" class="loading-state">
+          <div class="spinner"></div>
+          <p>載入公司資料中...</p>
+        </div>
+
+        <div v-else class="company-identity">
           <!-- Logo Upload -->
           <div class="logo-upload-section">
             <div class="logo-preview">
@@ -234,6 +239,70 @@
         </div>
       </div>
 
+      <!-- Company Details Section (From Chatbot/Database) -->
+      <div v-if="!isLoadingCompanyData && (companyData.industry || companyData.country)" class="section-card">
+        <div class="section-header">
+          <h2 class="section-title">📊 公司詳細資料</h2>
+          <p class="section-subtitle">由 AI 助理收集的公司資訊</p>
+        </div>
+
+        <div class="company-details-grid">
+          <div v-if="companyData.industry" class="detail-card">
+            <div class="detail-label">產業別</div>
+            <div class="detail-value">{{ companyData.industry }}</div>
+          </div>
+
+          <div v-if="companyData.country" class="detail-card">
+            <div class="detail-label">國家</div>
+            <div class="detail-value">{{ companyData.country }}</div>
+          </div>
+
+          <div v-if="companyData.address" class="detail-card">
+            <div class="detail-label">地址</div>
+            <div class="detail-value">{{ companyData.address }}</div>
+          </div>
+
+          <div v-if="companyData.capitalAmount !== null" class="detail-card">
+            <div class="detail-label">資本總額</div>
+            <div class="detail-value">{{ companyData.capitalAmount }} 億</div>
+          </div>
+
+          <div v-if="companyData.inventionPatentCount !== null" class="detail-card">
+            <div class="detail-label">發明專利數量</div>
+            <div class="detail-value">{{ companyData.inventionPatentCount }} 件</div>
+          </div>
+
+          <div v-if="companyData.utilityPatentCount !== null" class="detail-card">
+            <div class="detail-label">新型專利數量</div>
+            <div class="detail-value">{{ companyData.utilityPatentCount }} 件</div>
+          </div>
+
+          <div v-if="companyData.certificationCount !== null" class="detail-card">
+            <div class="detail-label">公司認證資料數量</div>
+            <div class="detail-value">{{ companyData.certificationCount }} 件</div>
+          </div>
+
+          <div v-if="companyData.esgCertification !== null" class="detail-card">
+            <div class="detail-label">ESG 相關認證</div>
+            <div class="detail-value">{{ companyData.esgCertification ? '有' : '無' }}</div>
+          </div>
+        </div>
+
+        <!-- Products Section -->
+        <div v-if="companyData.products && companyData.products.length > 0" class="products-section">
+          <h3 class="products-title">產品列表 ({{ companyData.products.length }} 個產品)</h3>
+          <div class="products-grid">
+            <div v-for="(product, index) in companyData.products" :key="index" class="product-card">
+              <div class="product-number">產品 {{ index + 1 }}</div>
+              <div class="product-info">
+                <div class="product-name">{{ product.product_name }}</div>
+                <div class="product-category">{{ product.product_category }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- AI Strategy Settings Section -->
       <div class="section-card">
         <div class="section-header">
@@ -264,13 +333,23 @@ definePageMeta({
 const toast = useToast()
 const api = useApi()
 
-const lastUpdated = ref('2023/12/20 由 Alex Chen')
+const lastUpdated = ref('')
+const isLoadingCompanyData = ref(true)
 
 const companyData = ref({
-  nameCN: '全球策略顧問股份有限公司',
-  nameEN: 'Global Strategy Advisors Inc.',
-  taxId: '82918455',
-  website: 'www.gsa-consulting.ai'
+  nameCN: '',
+  nameEN: '',
+  taxId: '',
+  website: '',
+  industry: '',
+  country: '',
+  address: '',
+  capitalAmount: null as number | null,
+  inventionPatentCount: null as number | null,
+  utilityPatentCount: null as number | null,
+  certificationCount: null as number | null,
+  esgCertification: null as boolean | null,
+  products: [] as any[]
 })
 
 // Chatbot state
@@ -577,6 +656,42 @@ const formatDateTime = (dateStr: string) => {
   })
 }
 
+// Load company data from database
+const loadCompanyData = async (onboardingData: any) => {
+  if (!onboardingData) return
+
+  // Populate company data from onboarding data
+  companyData.value = {
+    nameCN: onboardingData.company_name || '',
+    nameEN: '', // Not collected by chatbot yet
+    taxId: onboardingData.company_id || '',
+    website: '', // Not collected by chatbot yet
+    industry: onboardingData.industry || '',
+    country: onboardingData.country || '',
+    address: onboardingData.address || '',
+    capitalAmount: onboardingData.capital_amount,
+    inventionPatentCount: onboardingData.invention_patent_count,
+    utilityPatentCount: onboardingData.utility_patent_count,
+    certificationCount: onboardingData.certification_count,
+    esgCertification: onboardingData.esg_certification,
+    products: onboardingData.products || []
+  }
+
+  // Update last updated time
+  if (onboardingData.updated_at) {
+    const date = new Date(onboardingData.updated_at)
+    lastUpdated.value = date.toLocaleString('zh-TW', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  isLoadingCompanyData.value = false
+}
+
 // Auto-start chatbot on mount
 onMounted(async () => {
   try {
@@ -621,6 +736,9 @@ onMounted(async () => {
       }
 
       chatCompleted.value = sessionData.status === 'completed'
+
+      // Load company data into the form
+      await loadCompanyData(onboardingData)
 
       scrollToBottom()
 
@@ -765,9 +883,15 @@ onMounted(async () => {
         console.error('Error loading application status:', error)
       }
     }
+
+    // If no session was loaded, mark company data loading as complete
+    if (!sessionId.value) {
+      isLoadingCompanyData.value = false
+    }
   } catch (error: any) {
     // Silently fail if user is not logged in
     console.log('Chatbot initialization skipped:', error.message)
+    isLoadingCompanyData.value = false
   }
 })
 
@@ -1461,5 +1585,135 @@ const handleCancel = () => {
 .application-actions .btn-link:hover {
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Loading State */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: #666;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.last-updated {
+  font-size: 13px;
+  color: #999;
+  margin: 0;
+}
+
+/* Company Details Grid */
+.company-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.detail-card {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid #e0e0e0;
+  transition: all 0.2s;
+}
+
+.detail-card:hover {
+  border-color: #667eea;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+}
+
+.detail-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.detail-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.section-subtitle {
+  font-size: 13px;
+  color: #999;
+  margin: 4px 0 0 0;
+}
+
+/* Products Section */
+.products-section {
+  margin-top: 32px;
+  padding-top: 32px;
+  border-top: 2px solid #e0e0e0;
+}
+
+.products-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin-bottom: 16px;
+}
+
+.products-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.product-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  padding: 20px;
+  color: white;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+  transition: all 0.3s;
+}
+
+.product-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.3);
+}
+
+.product-number {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.8;
+  margin-bottom: 8px;
+}
+
+.product-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.product-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.product-category {
+  font-size: 14px;
+  opacity: 0.9;
 }
 </style>
