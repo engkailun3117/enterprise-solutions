@@ -36,7 +36,7 @@
         <div class="user-avatar">{{ userInitials }}</div>
         <div class="user-info">
           <div class="user-name">{{ userName }}</div>
-          <button @click="handleLogout" class="btn-logout">登出</button>
+          <button @click="handleLogout" class="btn-logout">退出</button>
         </div>
       </div>
     </aside>
@@ -68,8 +68,9 @@
 const router = useRouter()
 const api = useApi()
 
-// Mock user data - replace with actual user data from auth
-const userName = ref('User Name')
+// Get actual user data from auth
+const storedUser = api.getStoredUser()
+const userName = ref(storedUser?.username || 'User')
 const userInitials = computed(() => {
   return userName.value
     .split(' ')
@@ -80,8 +81,11 @@ const userInitials = computed(() => {
 })
 
 const handleLogout = () => {
-  // Clear auth token
-  localStorage.removeItem('auth_token')
+  // Clear auth token and user data using api.logout()
+  api.logout()
+  // Clear any chatbot session data
+  localStorage.removeItem('chatbot_session_id')
+  // Redirect to login page
   router.push('/login')
 }
 </script>

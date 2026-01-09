@@ -35,6 +35,7 @@ class User(Base):
     email = Column(String(100), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
     role = Column(Enum(UserRole, native_enum=True, create_constraint=True, name='userrole'), default=UserRole.USER, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationship to companies
@@ -48,6 +49,7 @@ class User(Base):
             "username": self.username,
             "email": self.email,
             "role": self.role.value,
+            "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
 
