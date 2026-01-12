@@ -158,13 +158,8 @@ class CompanyOnboarding(Base):
     chat_session_id = Column(Integer, ForeignKey("chat_sessions.id"), nullable=False, unique=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
-    # Company Information (主欄)
-    company_id = Column(String(100), nullable=True, index=True)  # 公司ID
-    company_name = Column(String(200), nullable=True)  # 公司名稱
+    # Chatbot Data Collection (責任範圍)
     industry = Column(String(100), nullable=True)  # 產業別
-    country = Column(String(100), nullable=True)  # 國家
-    tax = Column(Integer, nullable=True)  # 關稅 (backend only, derived from country)
-    address = Column(String(500), nullable=True)  # 地址
     capital_amount = Column(Integer, nullable=True)  # 資本總額(億)
     invention_patent_count = Column(Integer, nullable=True)  # 發明專利數量 - 權重高
     utility_patent_count = Column(Integer, nullable=True)  # 新型專利數量 - 權重低
@@ -185,12 +180,7 @@ class CompanyOnboarding(Base):
             "id": self.id,
             "chat_session_id": self.chat_session_id,
             "user_id": self.user_id,
-            "company_id": self.company_id,
-            "company_name": self.company_name,
             "industry": self.industry,
-            "country": self.country,
-            "tax": self.tax,
-            "address": self.address,
             "capital_amount": self.capital_amount,
             "invention_patent_count": self.invention_patent_count,
             "utility_patent_count": self.utility_patent_count,
@@ -204,17 +194,12 @@ class CompanyOnboarding(Base):
     def to_export_format(self):
         """Convert to the export JSON format requested by the user"""
         return {
-            "公司ID": self.company_id,
-            "公司名稱": self.company_name,
             "產業別": self.industry,
-            "國家": self.country,
-            "關稅": self.tax / 100 if self.tax else None,  # Convert to decimal
-            "地址": self.address,
             "資本總額(億)": self.capital_amount,
             "發明專利數量": self.invention_patent_count,
             "新型專利數量": self.utility_patent_count,
             "公司認證資料數量": self.certification_count,
-            "ESG相關認證資料": "有" if self.esg_certification else "無",
+            "ESG相關認證資料": "有" if self.esg_certification else "無" if self.esg_certification is not None else None,
             "產品": [p.to_export_format() for p in self.products] if self.products else []
         }
 

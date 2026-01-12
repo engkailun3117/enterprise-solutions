@@ -25,23 +25,6 @@ def get_openai_client():
     return _client
 
 
-# Country to tax rate mapping (as percentage * 100, e.g., 10 = 10%)
-COUNTRY_TAX_MAPPING = {
-    "台灣": 10,
-    "中國": 13,
-    "美國": 7,
-    "日本": 10,
-    "韓國": 10,
-    "新加坡": 7,
-    "越南": 10,
-    "泰國": 7,
-    "馬來西亞": 6,
-    "印尼": 11,
-    "菲律賓": 12,
-    "印度": 18,
-}
-
-
 class AIChatbotHandler:
     """AI-powered chatbot handler using OpenAI"""
 
@@ -108,10 +91,10 @@ class AIChatbotHandler:
 
     def get_system_prompt(self) -> str:
         """Get the system prompt for the AI"""
-        return """你是一個專業的企業導入助理，負責協助使用者建立公司資料。你的任務是：
+        return """你是一個專業的企業資料收集助理。你的任務是：
 
 1. 用友善、專業的態度與使用者對話
-2. 從對話中提取以下公司資訊（公司ID、名稱、國家、地址已在註冊時收集，無需再問）：
+2. 從對話中提取以下資訊：
    - 產業別（如：食品業、鋼鐵業、電子業等）
    - 資本總額（以億元為單位）
    - 發明專利數量
@@ -120,15 +103,19 @@ class AIChatbotHandler:
    - ESG相關認證（有/無）
 
 3. 收集產品資訊（可以有多個產品）：
+   - 產品ID
    - 產品名稱
-   - 產品類別
+   - 價格
+   - 主要原料
+   - 產品規格（尺寸、精度）
+   - 技術優勢
 
 重要提示：
 - 如果使用者一次提供多個資訊，請一次提取所有資訊
 - 如果資訊不清楚，請禮貌地詢問
 - 當收集完所有資訊後，詢問使用者是否還要新增產品
 - 保持對話自然流暢
-- 不要詢問公司ID、公司名稱、國家、地址，這些已在註冊時收集"""
+- 你的責任範圍僅限於上述資料的收集"""
 
     def get_current_data_summary(self) -> str:
         """Get a summary of currently collected data"""
@@ -136,7 +123,7 @@ class AIChatbotHandler:
             return "尚未收集任何資料"
 
         data = []
-        # Skip company_id, company_name, country, address (collected during registration)
+        # Only collect fields within chatbot's responsibility
         if self.onboarding_data.industry:
             data.append(f"產業別: {self.onboarding_data.industry}")
         if self.onboarding_data.capital_amount is not None:
@@ -184,7 +171,7 @@ class AIChatbotHandler:
                 "type": "function",
                 "function": {
                     "name": "update_company_data",
-                    "description": "更新公司資料。從使用者的訊息中提取資訊並更新。注意：公司ID、名稱、國家、地址已在註冊時收集，無需更新。",
+                    "description": "更新公司資料。從使用者的訊息中提取產業別、資本總額、專利數量、認證數量、ESG認證等資訊並更新。",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -271,7 +258,7 @@ class AIChatbotHandler:
         try:
             updated = False
 
-            # Skip company_id, company_name, country, address (collected during registration)
+            # Only collect fields within chatbot's responsibility
 
             if "industry" in data and data["industry"]:
                 self.onboarding_data.industry = data["industry"]
@@ -372,7 +359,7 @@ class AIChatbotHandler:
         fields_completed = 0
         total_fields = 6  # Total number of company fields (excluding registration fields)
 
-        # Skip company_id, company_name, country, address (collected during registration)
+        # Only collect fields within chatbot's responsibility
         if self.onboarding_data.industry:
             fields_completed += 1
         if self.onboarding_data.capital_amount is not None:

@@ -10,32 +10,11 @@ from sqlalchemy.orm import Session
 from models import ChatSession, ChatMessage, CompanyOnboarding, Product, ChatSessionStatus
 
 
-# Country to tax rate mapping (as percentage * 100, e.g., 10 = 10%)
-COUNTRY_TAX_MAPPING = {
-    "台灣": 10,
-    "中國": 13,
-    "美國": 7,
-    "日本": 10,
-    "韓國": 10,
-    "新加坡": 7,
-    "越南": 10,
-    "泰國": 7,
-    "馬來西亞": 6,
-    "印尼": 11,
-    "菲律賓": 12,
-    "印度": 18,
-}
-
-
 class ConversationState:
     """Tracks the current state of the conversation"""
 
-    # Company information fields
-    COMPANY_ID = "company_id"
-    COMPANY_NAME = "company_name"
+    # Chatbot collected fields (責任範圍)
     INDUSTRY = "industry"
-    COUNTRY = "country"
-    ADDRESS = "address"
     CAPITAL_AMOUNT = "capital_amount"
     INVENTION_PATENT_COUNT = "invention_patent_count"
     UTILITY_PATENT_COUNT = "utility_patent_count"
@@ -116,7 +95,7 @@ class ChatbotHandler:
 
     def get_next_field_to_collect(self) -> Optional[str]:
         """Determine the next field to collect based on current data"""
-        # Skip company_id, company_name, country, address (collected during registration)
+        # Only collect fields within chatbot's responsibility
         if not self.onboarding_data.industry:
             return ConversationState.INDUSTRY
         if self.onboarding_data.capital_amount is None:
@@ -142,7 +121,7 @@ class ChatbotHandler:
     def extract_and_save_data(self, user_message: str, field: str) -> bool:
         """Extract data from user message and save to database"""
         try:
-            # Skip company_id, company_name, country, address (collected during registration)
+            # Only collect fields within chatbot's responsibility
             if field == ConversationState.INDUSTRY:
                 self.onboarding_data.industry = user_message.strip()
 
@@ -239,7 +218,7 @@ class ChatbotHandler:
 
     def get_prompt_for_field(self, field: str) -> str:
         """Get the chatbot prompt for collecting a specific field"""
-        # Skip company_id, company_name, country, address (collected during registration)
+        # Only collect fields within chatbot's responsibility
         prompts = {
             ConversationState.INDUSTRY: "請問您的公司所屬產業別是什麼？（例如：食品業、鋼鐵業、電子業等）",
             ConversationState.CAPITAL_AMOUNT: "請問您的公司資本總額是多少億元？（請輸入數字）",
@@ -275,10 +254,13 @@ class ChatbotHandler:
 
                 products_count = len(self.onboarding_data.products)
                 return (
-                    f"太棒了！您的公司資料已經設定完成。\n\n"
-                    f"✅ 公司名稱：{self.onboarding_data.company_name}\n"
+                    f"太棒了！您的資料已經收集完成。\n\n"
                     f"✅ 產業別：{self.onboarding_data.industry}\n"
-                    f"✅ 國家：{self.onboarding_data.country}\n"
+                    f"✅ 資本總額：{self.onboarding_data.capital_amount} 億元\n"
+                    f"✅ 發明專利數量：{self.onboarding_data.invention_patent_count} 件\n"
+                    f"✅ 新型專利數量：{self.onboarding_data.utility_patent_count} 件\n"
+                    f"✅ 公司認證數量：{self.onboarding_data.certification_count} 份\n"
+                    f"✅ ESG認證：{'有' if self.onboarding_data.esg_certification else '無'}\n"
                     f"✅ 產品數量：{products_count} 個\n\n"
                     f"您可以使用匯出功能來取得完整的JSON格式資料。",
                     True
@@ -321,7 +303,7 @@ class ChatbotHandler:
         fields_completed = 0
         total_fields = 6  # Total number of company fields (excluding registration fields)
 
-        # Skip company_id, company_name, country, address (collected during registration)
+        # Only collect fields within chatbot's responsibility
         if self.onboarding_data.industry:
             fields_completed += 1
         if self.onboarding_data.capital_amount is not None:
