@@ -42,7 +42,7 @@
 #### 3. CompanyOnboarding（聊天機器人收集資料）
 - 聊天機器人責任範圍：
   - 產業別（Industry）
-  - 資本總額（Capital_Amount）- 以億元為單位
+  - 資本總額（Capital_Amount）- 以臺幣為單位
   - 發明專利數量（Invention_Patent_Count）
   - 新型專利數量（Utility_Patent_Count）
   - 公司認證資料數量（Certification_Count）
@@ -216,7 +216,7 @@ Content-Type: application/json
 ```json
 {
   "產業別": "食品業",
-  "資本總額(億)": 20,
+  "資本總額（以臺幣為單位）": 200000000,
   "發明專利數量": 30,
   "新型專利數量": 30,
   "公司認證資料數量": 10,
@@ -309,7 +309,7 @@ Content-Type: application/json
 
 ### 2. 資料收集順序（聊天機器人責任範圍）
 1. 產業別
-2. 資本總額（億元）
+2. 資本總額（臺幣）
 3. 發明專利數量
 4. 新型專利數量
 5. 公司認證資料數量
@@ -359,10 +359,10 @@ OPENAI_MODEL=gpt-4o-mini  # 可選，預設值
 
 **範例對話：**
 ```
-使用者：我們公司是食品業，資本額20億，有30個發明專利和15個新型專利
+使用者：我們公司是食品業，資本額2億，有30個發明專利和15個新型專利
 機器人：好的！我已經記錄了以下資訊：
          - 產業別：食品業
-         - 資本總額：20 億元
+         - 資本總額：200000000 臺幣
          - 發明專利數量：30
          - 新型專利數量：15
 
@@ -494,7 +494,7 @@ curl -X POST http://localhost:8000/api/chatbot/message \
 curl -X POST http://localhost:8000/api/chatbot/message \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"message":"我們公司叫鳳梨有限公司，在台灣，資本額20億","session_id":1}'
+  -d '{"message":"我們公司產業是食品業，資本額200000000元","session_id":1}'
 
 # 5. 查看會話訊息歷史
 curl -X GET http://localhost:8000/api/chatbot/sessions/1/messages \
@@ -550,7 +550,7 @@ response = requests.post(
     f"{BASE_URL}/api/chatbot/message",
     headers=headers,
     json={
-        "message": "我們公司是食品業，資本額20億，有30個發明專利和15個新型專利",
+        "message": "我們公司是食品業，資本額200000000元，有30個發明專利和15個新型專利",
         "session_id": session_id
     }
 )
@@ -606,7 +606,7 @@ async function example() {
   // 發送公司資料
   response = await sendMessage(
     token,
-    '我們公司是食品業，資本額20億，有30個發明專利',
+    '我們公司是食品業，資本額200000000元，有30個發明專利',
     sessionId
   );
   console.log('進度:', response.progress);
@@ -866,7 +866,7 @@ NEW_SESSION_ID=$(echo $NEW_SESSION | jq -r '.session_id')
 curl -X POST http://localhost:8000/api/chatbot/message \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"message\":\"我要修改產業別為電子業\",\"session_id\":$NEW_SESSION_ID}"
+  -d "{\"message\":\"我要修改資本額為500000000元\",\"session_id\":$NEW_SESSION_ID}"
 ```
 
 ### 情境 4：完整流程（使用 AI 模式）
@@ -894,7 +894,7 @@ response = requests.post(f"{BASE_URL}/api/chatbot/message",
     json={
         "message": """
         產業別：資訊科技業
-        資本總額：50億元
+        資本總額：500000000元
         發明專利：100個
         新型專利：50個
         公司認證：20個

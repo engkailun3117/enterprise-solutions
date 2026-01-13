@@ -160,7 +160,7 @@ class CompanyOnboarding(Base):
 
     # Chatbot Data Collection (責任範圍)
     industry = Column(String(100), nullable=True)  # 產業別
-    capital_amount = Column(Integer, nullable=True)  # 資本總額(億)
+    capital_amount = Column(Integer, nullable=True)  # 資本總額（以臺幣為單位）
     invention_patent_count = Column(Integer, nullable=True)  # 發明專利數量 - 權重高
     utility_patent_count = Column(Integer, nullable=True)  # 新型專利數量 - 權重低
     certification_count = Column(Integer, nullable=True)  # 公司認證資料數量
@@ -195,7 +195,7 @@ class CompanyOnboarding(Base):
         """Convert to the export JSON format requested by the user"""
         return {
             "產業別": self.industry,
-            "資本總額(億)": self.capital_amount,
+            "資本總額（以臺幣為單位）": self.capital_amount,
             "發明專利數量": self.invention_patent_count,
             "新型專利數量": self.utility_patent_count,
             "公司認證資料數量": self.certification_count,

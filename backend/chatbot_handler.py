@@ -221,7 +221,7 @@ class ChatbotHandler:
         # Only collect fields within chatbot's responsibility
         prompts = {
             ConversationState.INDUSTRY: "請問您的公司所屬產業別是什麼？（例如：食品業、鋼鐵業、電子業等）",
-            ConversationState.CAPITAL_AMOUNT: "請問您的公司資本總額是多少億元？（請輸入數字）",
+            ConversationState.CAPITAL_AMOUNT: "請問您的公司資本總額是多少？（以臺幣為單位，請輸入數字）",
             ConversationState.INVENTION_PATENT_COUNT: "請問您的公司擁有多少件發明專利？（請輸入數字）",
             ConversationState.UTILITY_PATENT_COUNT: "請問您的公司擁有多少件新型專利？（請輸入數字）",
             ConversationState.CERTIFICATION_COUNT: "請問您的公司擁有多少份認證資料？（請輸入數字）",
@@ -256,7 +256,7 @@ class ChatbotHandler:
                 return (
                     f"太棒了！您的資料已經收集完成。\n\n"
                     f"✅ 產業別：{self.onboarding_data.industry}\n"
-                    f"✅ 資本總額：{self.onboarding_data.capital_amount} 億元\n"
+                    f"✅ 資本總額：{self.onboarding_data.capital_amount} 臺幣\n"
                     f"✅ 發明專利數量：{self.onboarding_data.invention_patent_count} 件\n"
                     f"✅ 新型專利數量：{self.onboarding_data.utility_patent_count} 件\n"
                     f"✅ 公司認證數量：{self.onboarding_data.certification_count} 份\n"

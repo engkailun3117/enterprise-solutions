@@ -96,7 +96,7 @@ class AIChatbotHandler:
 1. 用友善、專業的態度與使用者對話
 2. 從對話中提取以下資訊：
    - 產業別（如：食品業、鋼鐵業、電子業等）
-   - 資本總額（以億元為單位）
+   - 資本總額（以臺幣為單位）
    - 發明專利數量
    - 新型專利數量
    - 公司認證資料數量
@@ -127,7 +127,7 @@ class AIChatbotHandler:
         if self.onboarding_data.industry:
             data.append(f"產業別: {self.onboarding_data.industry}")
         if self.onboarding_data.capital_amount is not None:
-            data.append(f"資本總額: {self.onboarding_data.capital_amount}億")
+            data.append(f"資本總額: {self.onboarding_data.capital_amount} 臺幣")
         if self.onboarding_data.invention_patent_count is not None:
             data.append(f"發明專利: {self.onboarding_data.invention_patent_count}件")
         if self.onboarding_data.utility_patent_count is not None:
@@ -176,7 +176,7 @@ class AIChatbotHandler:
                         "type": "object",
                         "properties": {
                             "industry": {"type": "string", "description": "產業別"},
-                            "capital_amount": {"type": "integer", "description": "資本總額（億元）"},
+                            "capital_amount": {"type": "integer", "description": "資本總額（以臺幣為單位）"},
                             "invention_patent_count": {"type": "integer", "description": "發明專利數量"},
                             "utility_patent_count": {"type": "integer", "description": "新型專利數量"},
                             "certification_count": {"type": "integer", "description": "公司認證資料數量"},
