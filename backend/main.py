@@ -687,14 +687,18 @@ async def create_new_session_with_context(
 
             # Copy products
             old_products = db.query(Product).filter(
-                Product.company_onboarding_id == latest_company_data.id
+                Product.onboarding_id == latest_company_data.id
             ).all()
 
             for old_product in old_products:
                 new_product = Product(
-                    company_onboarding_id=new_onboarding.id,
+                    onboarding_id=new_onboarding.id,
+                    product_id=old_product.product_id,
                     product_name=old_product.product_name,
-                    product_category=old_product.product_category
+                    price=old_product.price,
+                    main_raw_materials=old_product.main_raw_materials,
+                    product_standard=old_product.product_standard,
+                    technical_advantages=old_product.technical_advantages
                 )
                 db.add(new_product)
 
