@@ -216,6 +216,44 @@ class ChatbotHandler:
         self.db.refresh(product)
         return product
 
+    def get_initial_greeting(self) -> str:
+        """Get the initial greeting with menu options"""
+        return """您好！我是企業資料收集助理。
+
+請問您想要進行以下哪項操作？
+
+1️⃣ 填寫資料 - 開始收集公司和產品資料
+2️⃣ 查看進度 - 了解目前資料填寫的進度如何
+3️⃣ 查看已填資料 - 查看目前已經填寫的資料內容
+
+請輸入數字（1、2 或 3）或直接說明您的需求。"""
+
+    def get_current_data_summary(self) -> str:
+        """Get a summary of currently collected data"""
+        if not self.onboarding_data:
+            return "尚未收集任何資料"
+
+        data = []
+        # Only collect fields within chatbot's responsibility
+        if self.onboarding_data.industry:
+            data.append(f"產業別: {self.onboarding_data.industry}")
+        if self.onboarding_data.capital_amount is not None:
+            data.append(f"資本總額: {self.onboarding_data.capital_amount} 臺幣")
+        if self.onboarding_data.invention_patent_count is not None:
+            data.append(f"發明專利: {self.onboarding_data.invention_patent_count}件")
+        if self.onboarding_data.utility_patent_count is not None:
+            data.append(f"新型專利: {self.onboarding_data.utility_patent_count}件")
+        if self.onboarding_data.certification_count is not None:
+            data.append(f"認證資料: {self.onboarding_data.certification_count}份")
+        if self.onboarding_data.esg_certification is not None:
+            data.append(f"ESG認證: {'有' if self.onboarding_data.esg_certification else '無'}")
+
+        products_count = len(self.onboarding_data.products) if self.onboarding_data.products else 0
+        if products_count > 0:
+            data.append(f"產品數量: {products_count}個")
+
+        return "\n".join(data) if data else "尚未收集任何資料"
+
     def get_prompt_for_field(self, field: str) -> str:
         """Get the chatbot prompt for collecting a specific field"""
         # Only collect fields within chatbot's responsibility
@@ -244,10 +282,46 @@ class ChatbotHandler:
         Process user message and return bot response
         Returns: (response_message, is_completed)
         """
+        # Get conversation history
+        history = self.get_conversation_history()
+
+        # Check if this is the first message (no history yet)
+        if len(history) == 0:
+            # Check for menu selection
+            user_msg_lower = user_message.lower().strip()
+
+            # Option 1: Fill in data
+            if any(word in user_msg_lower for word in ["1", "填寫", "填写", "開始", "开始"]):
+                return "太好了！讓我們開始收集您的公司資料。\n\n" + self.get_prompt_for_field(ConversationState.INDUSTRY), False
+
+            # Option 2: View progress
+            elif any(word in user_msg_lower for word in ["2", "進度", "进度", "查看進度"]):
+                progress = self.get_progress()
+                return f"""📊 資料填寫進度：
+
+已完成欄位：{progress['fields_completed']}/{progress['total_fields']}
+產品數量：{progress['products_count']} 個
+
+{self.get_current_data_summary()}
+
+您想繼續填寫資料嗎？（是/否）""", False
+
+            # Option 3: View filled data
+            elif any(word in user_msg_lower for word in ["3", "已填", "查看資料", "查看数据"]):
+                data_summary = self.get_current_data_summary()
+                return f"""📝 目前已填寫的資料：
+
+{data_summary}
+
+您想繼續填寫資料嗎？（是/否）""", False
+
+            # Default: Show menu
+            else:
+                return self.get_initial_greeting(), False
+
         # Check if user wants to finish
         if any(word in user_message for word in ["完成", "結束", "不用", "沒有了", "不需要"]):
             # Check if we're in product adding phase
-            history = self.get_conversation_history()
             if any("產品" in msg.content for msg in history[-3:]):
                 self.session.status = ChatSessionStatus.COMPLETED
                 self.db.commit()
