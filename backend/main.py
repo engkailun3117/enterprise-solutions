@@ -30,7 +30,8 @@ print("🔧 Backend Configuration:")
 print(f"   Database: {settings.database_url[:30]}...")
 print(f"   API Host: {settings.api_host}")
 print(f"   API Port: {settings.api_port}")
-print(f"   SECRET_KEY: {settings.secret_key[:20]}... (length: {len(settings.secret_key)})")
+print(f"   External JWT Secret: {settings.external_jwt_secret[:20]}... (length: {len(settings.external_jwt_secret)})")
+print(f"   AI Chatbot: {'Enabled' if settings.use_ai_chatbot else 'Disabled'}")
 print("=" * 60)
 
 # Initialize FastAPI app
