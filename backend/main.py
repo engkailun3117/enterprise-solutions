@@ -12,7 +12,7 @@ from schemas import (
     UserRegister, UserLogin, TokenResponse, UserResponse, ReviewAction,
     PasswordResetRequest, PasswordResetConfirm,
     ChatMessageCreate, ChatResponse, ChatSessionResponse, ChatMessageResponse,
-    OnboardingDataResponse, SubmitChatbotApplicationRequest
+    OnboardingDataResponse
 )
 from config import get_settings
 from auth import (
@@ -675,31 +675,30 @@ async def create_new_session_with_context(
         ).first()
 
         if new_onboarding:
-            # Copy all company fields from latest session
-            new_onboarding.company_id = latest_company_data.company_id
-            new_onboarding.company_name = latest_company_data.company_name
+            # Copy chatbot collected fields from latest session
             new_onboarding.industry = latest_company_data.industry
-            new_onboarding.country = latest_company_data.country
-            new_onboarding.address = latest_company_data.address
             new_onboarding.capital_amount = latest_company_data.capital_amount
             new_onboarding.invention_patent_count = latest_company_data.invention_patent_count
             new_onboarding.utility_patent_count = latest_company_data.utility_patent_count
             new_onboarding.certification_count = latest_company_data.certification_count
             new_onboarding.esg_certification = latest_company_data.esg_certification
-            new_onboarding.tax = latest_company_data.tax
 
             db.commit()
 
             # Copy products
             old_products = db.query(Product).filter(
-                Product.company_onboarding_id == latest_company_data.id
+                Product.onboarding_id == latest_company_data.id
             ).all()
 
             for old_product in old_products:
                 new_product = Product(
-                    company_onboarding_id=new_onboarding.id,
+                    onboarding_id=new_onboarding.id,
+                    product_id=old_product.product_id,
                     product_name=old_product.product_name,
-                    product_category=old_product.product_category
+                    price=old_product.price,
+                    main_raw_materials=old_product.main_raw_materials,
+                    product_standard=old_product.product_standard,
+                    technical_advantages=old_product.technical_advantages
                 )
                 db.add(new_product)
 
@@ -897,132 +896,6 @@ async def export_all_onboarding_data(
             export_data.append(onboarding_data.to_export_format())
 
     return export_data
-
-
-@app.post("/api/chatbot/submit-application", response_model=CompanyInfoResponse)
-async def submit_chatbot_application(
-    request: SubmitChatbotApplicationRequest,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Submit chatbot onboarding data as a formal company application
-
-    This endpoint creates a CompanyInfo record from the chatbot-collected data.
-    It's designed for collaboration between the AI chatbot and the main application workflow.
-
-    - **session_id**: Optional chat session ID (defaults to latest active session)
-    - **company_head**: Optional company head name (defaults to username)
-    - **company_email**: Optional contact email (defaults to user email)
-    - **company_link**: Optional company website URL
-
-    Requires: Authentication
-    Returns: Created or updated company application
-    """
-    try:
-        # Determine which session to use
-        session_id = request.session_id
-        if not session_id:
-            # Get latest active session
-            latest_session = db.query(ChatSession).filter(
-                ChatSession.user_id == current_user.id,
-                ChatSession.status == ChatSessionStatus.ACTIVE
-            ).order_by(ChatSession.created_at.desc()).first()
-
-            if not latest_session:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="No active chat session found. Please complete the chatbot onboarding first."
-                )
-            session_id = latest_session.id
-
-        # Verify session belongs to user
-        session = db.query(ChatSession).filter(
-            ChatSession.id == session_id,
-            ChatSession.user_id == current_user.id
-        ).first()
-
-        if not session:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Chat session not found"
-            )
-
-        # Get onboarding data from session
-        onboarding_data = db.query(CompanyOnboarding).filter(
-            CompanyOnboarding.chat_session_id == session_id
-        ).first()
-
-        if not onboarding_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No onboarding data found for this session"
-            )
-
-        # Validate required fields
-        if not onboarding_data.company_id or not onboarding_data.company_name:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Company ID and Company Name are required. Please complete the chatbot onboarding first."
-            )
-
-        # Use provided values or defaults
-        company_head = request.company_head or current_user.username
-        company_email = request.company_email or current_user.email
-        company_link = request.company_link
-
-        # Check if user already has an application
-        existing_application = db.query(CompanyInfo).filter(
-            CompanyInfo.user_id == current_user.id
-        ).first()
-
-        if existing_application:
-            # Update existing application with chatbot data
-            existing_application.Company_ID = onboarding_data.company_id
-            existing_application.Company_Name = onboarding_data.company_name
-            existing_application.Company_Head = company_head
-            existing_application.Company_Email = company_email
-            existing_application.Company_Link = company_link
-            # Reset status to PENDING when resubmitting
-            existing_application.status = ApplicationStatus.PENDING
-            existing_application.rejection_reason = None
-
-            db.commit()
-            db.refresh(existing_application)
-
-            return existing_application.to_dict()
-        else:
-            # Create new company application
-            db_company = CompanyInfo(
-                Company_ID=onboarding_data.company_id,
-                Company_Name=onboarding_data.company_name,
-                Company_Head=company_head,
-                Company_Email=company_email,
-                Company_Link=company_link,
-                user_id=current_user.id,
-                status=ApplicationStatus.PENDING
-            )
-
-            db.add(db_company)
-            db.commit()
-            db.refresh(db_company)
-
-            return db_company.to_dict()
-
-    except HTTPException:
-        raise
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Company with ID {onboarding_data.company_id} already exists"
-        )
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while submitting the application: {str(e)}"
-        )
 
 
 if __name__ == "__main__":

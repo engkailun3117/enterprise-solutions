@@ -10,32 +10,11 @@ from sqlalchemy.orm import Session
 from models import ChatSession, ChatMessage, CompanyOnboarding, Product, ChatSessionStatus
 
 
-# Country to tax rate mapping (as percentage * 100, e.g., 10 = 10%)
-COUNTRY_TAX_MAPPING = {
-    "台灣": 10,
-    "中國": 13,
-    "美國": 7,
-    "日本": 10,
-    "韓國": 10,
-    "新加坡": 7,
-    "越南": 10,
-    "泰國": 7,
-    "馬來西亞": 6,
-    "印尼": 11,
-    "菲律賓": 12,
-    "印度": 18,
-}
-
-
 class ConversationState:
     """Tracks the current state of the conversation"""
 
-    # Company information fields
-    COMPANY_ID = "company_id"
-    COMPANY_NAME = "company_name"
+    # Chatbot collected fields (責任範圍)
     INDUSTRY = "industry"
-    COUNTRY = "country"
-    ADDRESS = "address"
     CAPITAL_AMOUNT = "capital_amount"
     INVENTION_PATENT_COUNT = "invention_patent_count"
     UTILITY_PATENT_COUNT = "utility_patent_count"
@@ -116,7 +95,7 @@ class ChatbotHandler:
 
     def get_next_field_to_collect(self) -> Optional[str]:
         """Determine the next field to collect based on current data"""
-        # Skip company_id, company_name, country, address (collected during registration)
+        # Only collect fields within chatbot's responsibility
         if not self.onboarding_data.industry:
             return ConversationState.INDUSTRY
         if self.onboarding_data.capital_amount is None:
@@ -142,7 +121,7 @@ class ChatbotHandler:
     def extract_and_save_data(self, user_message: str, field: str) -> bool:
         """Extract data from user message and save to database"""
         try:
-            # Skip company_id, company_name, country, address (collected during registration)
+            # Only collect fields within chatbot's responsibility
             if field == ConversationState.INDUSTRY:
                 self.onboarding_data.industry = user_message.strip()
 
@@ -237,12 +216,50 @@ class ChatbotHandler:
         self.db.refresh(product)
         return product
 
+    def get_initial_greeting(self) -> str:
+        """Get the initial greeting with menu options"""
+        return """您好！我是企業資料收集助理。
+
+請問您想要進行以下哪項操作？
+
+1️⃣ 填寫資料 - 開始收集公司和產品資料
+2️⃣ 查看進度 - 了解目前資料填寫的進度如何
+3️⃣ 查看已填資料 - 查看目前已經填寫的資料內容
+
+請輸入數字（1、2 或 3）或直接說明您的需求。"""
+
+    def get_current_data_summary(self) -> str:
+        """Get a summary of currently collected data"""
+        if not self.onboarding_data:
+            return "尚未收集任何資料"
+
+        data = []
+        # Only collect fields within chatbot's responsibility
+        if self.onboarding_data.industry:
+            data.append(f"產業別: {self.onboarding_data.industry}")
+        if self.onboarding_data.capital_amount is not None:
+            data.append(f"資本總額: {self.onboarding_data.capital_amount} 臺幣")
+        if self.onboarding_data.invention_patent_count is not None:
+            data.append(f"發明專利: {self.onboarding_data.invention_patent_count}件")
+        if self.onboarding_data.utility_patent_count is not None:
+            data.append(f"新型專利: {self.onboarding_data.utility_patent_count}件")
+        if self.onboarding_data.certification_count is not None:
+            data.append(f"認證資料: {self.onboarding_data.certification_count}份")
+        if self.onboarding_data.esg_certification is not None:
+            data.append(f"ESG認證: {'有' if self.onboarding_data.esg_certification else '無'}")
+
+        products_count = len(self.onboarding_data.products) if self.onboarding_data.products else 0
+        if products_count > 0:
+            data.append(f"產品數量: {products_count}個")
+
+        return "\n".join(data) if data else "尚未收集任何資料"
+
     def get_prompt_for_field(self, field: str) -> str:
         """Get the chatbot prompt for collecting a specific field"""
-        # Skip company_id, company_name, country, address (collected during registration)
+        # Only collect fields within chatbot's responsibility
         prompts = {
             ConversationState.INDUSTRY: "請問您的公司所屬產業別是什麼？（例如：食品業、鋼鐵業、電子業等）",
-            ConversationState.CAPITAL_AMOUNT: "請問您的公司資本總額是多少億元？（請輸入數字）",
+            ConversationState.CAPITAL_AMOUNT: "請問您的公司資本總額是多少？（以臺幣為單位，請輸入數字）",
             ConversationState.INVENTION_PATENT_COUNT: "請問您的公司擁有多少件發明專利？（請輸入數字）",
             ConversationState.UTILITY_PATENT_COUNT: "請問您的公司擁有多少件新型專利？（請輸入數字）",
             ConversationState.CERTIFICATION_COUNT: "請問您的公司擁有多少份認證資料？（請輸入數字）",
@@ -265,20 +282,59 @@ class ChatbotHandler:
         Process user message and return bot response
         Returns: (response_message, is_completed)
         """
+        # Get conversation history
+        history = self.get_conversation_history()
+
+        # Check if this is the first message (no history yet)
+        if len(history) == 0:
+            # Check for menu selection
+            user_msg_lower = user_message.lower().strip()
+
+            # Option 1: Fill in data
+            if any(word in user_msg_lower for word in ["1", "填寫", "填写", "開始", "开始"]):
+                return "太好了！讓我們開始收集您的公司資料。\n\n" + self.get_prompt_for_field(ConversationState.INDUSTRY), False
+
+            # Option 2: View progress
+            elif any(word in user_msg_lower for word in ["2", "進度", "进度", "查看進度"]):
+                progress = self.get_progress()
+                return f"""📊 資料填寫進度：
+
+已完成欄位：{progress['fields_completed']}/{progress['total_fields']}
+產品數量：{progress['products_count']} 個
+
+{self.get_current_data_summary()}
+
+您想繼續填寫資料嗎？（是/否）""", False
+
+            # Option 3: View filled data
+            elif any(word in user_msg_lower for word in ["3", "已填", "查看資料", "查看数据"]):
+                data_summary = self.get_current_data_summary()
+                return f"""📝 目前已填寫的資料：
+
+{data_summary}
+
+您想繼續填寫資料嗎？（是/否）""", False
+
+            # Default: Show menu
+            else:
+                return self.get_initial_greeting(), False
+
         # Check if user wants to finish
         if any(word in user_message for word in ["完成", "結束", "不用", "沒有了", "不需要"]):
             # Check if we're in product adding phase
-            history = self.get_conversation_history()
             if any("產品" in msg.content for msg in history[-3:]):
                 self.session.status = ChatSessionStatus.COMPLETED
                 self.db.commit()
 
                 products_count = len(self.onboarding_data.products)
                 return (
-                    f"太棒了！您的公司資料已經設定完成。\n\n"
-                    f"✅ 公司名稱：{self.onboarding_data.company_name}\n"
+                    f"太棒了！您的資料已經收集完成。\n\n"
                     f"✅ 產業別：{self.onboarding_data.industry}\n"
-                    f"✅ 國家：{self.onboarding_data.country}\n"
+                    f"✅ 資本總額：{self.onboarding_data.capital_amount} 臺幣\n"
+                    f"✅ 發明專利數量：{self.onboarding_data.invention_patent_count} 件\n"
+                    f"✅ 新型專利數量：{self.onboarding_data.utility_patent_count} 件\n"
+                    f"✅ 公司認證數量：{self.onboarding_data.certification_count} 份\n"
+                    f"✅ ESG認證：{'有' if self.onboarding_data.esg_certification else '無'}\n"
                     f"✅ 產品數量：{products_count} 個\n\n"
                     f"您可以使用匯出功能來取得完整的JSON格式資料。",
                     True
@@ -321,7 +377,7 @@ class ChatbotHandler:
         fields_completed = 0
         total_fields = 6  # Total number of company fields (excluding registration fields)
 
-        # Skip company_id, company_name, country, address (collected during registration)
+        # Only collect fields within chatbot's responsibility
         if self.onboarding_data.industry:
             fields_completed += 1
         if self.onboarding_data.capital_amount is not None:

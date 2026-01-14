@@ -25,23 +25,6 @@ def get_openai_client():
     return _client
 
 
-# Country to tax rate mapping (as percentage * 100, e.g., 10 = 10%)
-COUNTRY_TAX_MAPPING = {
-    "台灣": 10,
-    "中國": 13,
-    "美國": 7,
-    "日本": 10,
-    "韓國": 10,
-    "新加坡": 7,
-    "越南": 10,
-    "泰國": 7,
-    "馬來西亞": 6,
-    "印尼": 11,
-    "菲律賓": 12,
-    "印度": 18,
-}
-
-
 class AIChatbotHandler:
     """AI-powered chatbot handler using OpenAI"""
 
@@ -108,27 +91,43 @@ class AIChatbotHandler:
 
     def get_system_prompt(self) -> str:
         """Get the system prompt for the AI"""
-        return """你是一個專業的企業導入助理，負責協助使用者建立公司資料。你的任務是：
+        return """你是一個專業的企業資料收集助理。你的任務是：
 
 1. 用友善、專業的態度與使用者對話
-2. 從對話中提取以下公司資訊（公司ID、名稱、國家、地址已在註冊時收集，無需再問）：
+2. **一次只詢問一個欄位**，按照以下順序收集資訊：
    - 產業別（如：食品業、鋼鐵業、電子業等）
-   - 資本總額（以億元為單位）
-   - 發明專利數量
-   - 新型專利數量
+   - 資本總額（以臺幣為單位）
+   - 發明專利數量（⚠️ 特別注意：發明專利和新型專利要分開詢問，避免混淆）
+   - 新型專利數量（⚠️ 特別注意：發明專利和新型專利要分開詢問，避免混淆）
    - 公司認證資料數量
    - ESG相關認證（有/無）
 
 3. 收集產品資訊（可以有多個產品）：
+   - 產品ID
    - 產品名稱
-   - 產品類別
+   - 價格
+   - 主要原料
+   - 產品規格（尺寸、精度）
+   - 技術優勢
 
 重要提示：
-- 如果使用者一次提供多個資訊，請一次提取所有資訊
-- 如果資訊不清楚，請禮貌地詢問
-- 當收集完所有資訊後，詢問使用者是否還要新增產品
-- 保持對話自然流暢
-- 不要詢問公司ID、公司名稱、國家、地址，這些已在註冊時收集"""
+- **必須一次只詢問一個問題**，等待使用者回答後再詢問下一個
+- **發明專利和新型專利必須分開詢問**，避免使用者混淆這兩種專利類型
+- 如果使用者一次提供多個資訊，只提取當前詢問的欄位，其他資訊提醒使用者稍後會詢問
+- 保持對話自然流暢，但堅持逐個收集資料
+- 你的責任範圍僅限於上述資料的收集"""
+
+    def get_initial_greeting(self) -> str:
+        """Get the initial greeting with menu options"""
+        return """您好！我是企業資料收集助理。
+
+請問您想要進行以下哪項操作？
+
+1️⃣ 填寫資料 - 開始收集公司和產品資料
+2️⃣ 查看進度 - 了解目前資料填寫的進度如何
+3️⃣ 查看已填資料 - 查看目前已經填寫的資料內容
+
+請輸入數字（1、2 或 3）或直接說明您的需求。"""
 
     def get_current_data_summary(self) -> str:
         """Get a summary of currently collected data"""
@@ -136,11 +135,11 @@ class AIChatbotHandler:
             return "尚未收集任何資料"
 
         data = []
-        # Skip company_id, company_name, country, address (collected during registration)
+        # Only collect fields within chatbot's responsibility
         if self.onboarding_data.industry:
             data.append(f"產業別: {self.onboarding_data.industry}")
         if self.onboarding_data.capital_amount is not None:
-            data.append(f"資本總額: {self.onboarding_data.capital_amount}億")
+            data.append(f"資本總額: {self.onboarding_data.capital_amount} 臺幣")
         if self.onboarding_data.invention_patent_count is not None:
             data.append(f"發明專利: {self.onboarding_data.invention_patent_count}件")
         if self.onboarding_data.utility_patent_count is not None:
@@ -184,12 +183,12 @@ class AIChatbotHandler:
                 "type": "function",
                 "function": {
                     "name": "update_company_data",
-                    "description": "更新公司資料。從使用者的訊息中提取資訊並更新。注意：公司ID、名稱、國家、地址已在註冊時收集，無需更新。",
+                    "description": "更新公司資料。從使用者的訊息中提取產業別、資本總額、專利數量、認證數量、ESG認證等資訊並更新。",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "industry": {"type": "string", "description": "產業別"},
-                            "capital_amount": {"type": "integer", "description": "資本總額（億元）"},
+                            "capital_amount": {"type": "integer", "description": "資本總額（以臺幣為單位）"},
                             "invention_patent_count": {"type": "integer", "description": "發明專利數量"},
                             "utility_patent_count": {"type": "integer", "description": "新型專利數量"},
                             "certification_count": {"type": "integer", "description": "公司認證資料數量"},
@@ -271,7 +270,7 @@ class AIChatbotHandler:
         try:
             updated = False
 
-            # Skip company_id, company_name, country, address (collected during registration)
+            # Only collect fields within chatbot's responsibility
 
             if "industry" in data and data["industry"]:
                 self.onboarding_data.industry = data["industry"]
@@ -340,6 +339,40 @@ class AIChatbotHandler:
             for msg in history
         ]
 
+        # Check if this is the first message (no history yet)
+        if len(conversation_history) == 0:
+            # Check for menu selection
+            user_msg_lower = user_message.lower().strip()
+
+            # Option 1: Fill in data
+            if any(word in user_msg_lower for word in ["1", "填寫", "填写", "開始", "开始"]):
+                return "太好了！讓我們開始收集您的公司資料。\n\n請問您的公司所屬產業別是什麼？（例如：食品業、鋼鐵業、電子業等）", False
+
+            # Option 2: View progress
+            elif any(word in user_msg_lower for word in ["2", "進度", "进度", "查看進度"]):
+                progress = self.get_progress()
+                return f"""📊 資料填寫進度：
+
+已完成欄位：{progress['fields_completed']}/{progress['total_fields']}
+產品數量：{progress['products_count']} 個
+
+{self.get_current_data_summary()}
+
+您想繼續填寫資料嗎？（是/否）""", False
+
+            # Option 3: View filled data
+            elif any(word in user_msg_lower for word in ["3", "已填", "查看資料", "查看数据"]):
+                data_summary = self.get_current_data_summary()
+                return f"""📝 目前已填寫的資料：
+
+{data_summary}
+
+您想繼續填寫資料嗎？（是/否）""", False
+
+            # Default: Show menu
+            else:
+                return self.get_initial_greeting(), False
+
         # Extract data with AI
         ai_result = self.extract_data_with_ai(user_message, conversation_history)
 
@@ -372,7 +405,7 @@ class AIChatbotHandler:
         fields_completed = 0
         total_fields = 6  # Total number of company fields (excluding registration fields)
 
-        # Skip company_id, company_name, country, address (collected during registration)
+        # Only collect fields within chatbot's responsibility
         if self.onboarding_data.industry:
             fields_completed += 1
         if self.onboarding_data.capital_amount is not None:
