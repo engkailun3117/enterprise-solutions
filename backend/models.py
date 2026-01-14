@@ -26,17 +26,17 @@ class ChatSessionStatus(str, enum.Enum):
 
 
 class User(Base):
-    """User table for authentication and authorization"""
+    """User table for external JWT authentication (synced from main system)"""
 
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), unique=True, nullable=False, index=True)
-    email = Column(String(100), unique=True, nullable=False, index=True)
-    hashed_password = Column(String(255), nullable=False)
+    external_user_id = Column(String(100), unique=True, nullable=False, index=True)  # Maps to main system's user ID
+    username = Column(String(50), nullable=False, index=True)
     role = Column(Enum(UserRole, native_enum=True, create_constraint=True, name='userrole'), default=UserRole.USER, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationship to companies
     companies = relationship("CompanyInfo", back_populates="user", foreign_keys="CompanyInfo.user_id")
@@ -46,11 +46,12 @@ class User(Base):
         """Convert model to dictionary"""
         return {
             "id": self.id,
+            "external_user_id": self.external_user_id,
             "username": self.username,
-            "email": self.email,
             "role": self.role.value,
             "is_active": self.is_active,
-            "created_at": self.created_at.isoformat() if self.created_at else None
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
 
 

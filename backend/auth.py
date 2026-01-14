@@ -1,7 +1,6 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -11,95 +10,108 @@ from config import get_settings
 
 # Security configuration
 settings = get_settings()
-SECRET_KEY = settings.secret_key
+EXTERNAL_JWT_SECRET = settings.external_jwt_secret  # Shared secret from main system
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
-
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # HTTP Bearer token scheme
 security = HTTPBearer()
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against a hash"""
-    return pwd_context.verify(plain_password, hashed_password)
+def decode_external_jwt(token: str) -> dict:
+    """
+    Decode and verify JWT token from the main system
 
-
-def get_password_hash(password: str) -> str:
-    """Hash a password"""
-    return pwd_context.hash(password)
-
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """Create a JWT access token"""
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-
-    to_encode.update({"exp": expire})
-
-    # Debug: Print SECRET_KEY being used
-    print(f"🔑 Creating token with SECRET_KEY: {SECRET_KEY[:20]}... (len: {len(SECRET_KEY)})")
-
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-# Token 的方式是用 user id 通過 secret key + ‘HS256’ 方程式加密
-# 之前遇到的難題: jwt 加密不了 int data type of user id, 所以必須把id 轉成 string先
-def decode_access_token(token: str) -> dict:
-    """Decode and verify a JWT token"""
+    The token should contain:
+    - user_id: The external user's ID from main system
+    - username: The user's username
+    - exp: Expiration timestamp (optional)
+    """
     try:
-        # Debug: Print SECRET_KEY being used
-        print(f"🔓 Validating token with SECRET_KEY: {SECRET_KEY[:20]}... (len: {len(SECRET_KEY)})")
-
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, EXTERNAL_JWT_SECRET, algorithms=[ALGORITHM])
         return payload
     except JWTError as e:
-        print(f"❌ JWT Error: {e}")
+        print(f"❌ JWT Validation Error: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+def sync_user_from_jwt(db: Session, external_user_id: str, username: str) -> User:
+    """
+    Sync user from JWT payload to local database
+
+    If user doesn't exist, create it.
+    If user exists, update username if changed.
+
+    Args:
+        db: Database session
+        external_user_id: User ID from main system
+        username: Username from main system
+
+    Returns:
+        User object from local database
+    """
+    # Check if user already exists
+    user = db.query(User).filter(User.external_user_id == external_user_id).first()
+
+    if user:
+        # Update username if changed
+        if user.username != username:
+            user.username = username
+            user.updated_at = datetime.utcnow()
+            db.commit()
+            db.refresh(user)
+            print(f"✅ Updated user: {username} (external_id: {external_user_id})")
+    else:
+        # Create new user
+        user = User(
+            external_user_id=external_user_id,
+            username=username,
+            role=UserRole.USER,  # Default role
+            is_active=True
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        print(f"✅ Created new user: {username} (external_id: {external_user_id})")
+
+    return user
 
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ) -> User:
-    """Get the current authenticated user from JWT token"""
+    """
+    Get the current authenticated user from external JWT token
+
+    This function:
+    1. Validates the JWT token from the main system
+    2. Extracts user_id and username
+    3. Auto-creates/updates user in local database
+    4. Returns the local user object
+    """
     token = credentials.credentials
-    payload = decode_access_token(token)
+    payload = decode_external_jwt(token)
 
-    user_id_str = payload.get("sub")
-    if user_id_str is None:
+    # Extract user info from JWT payload
+    external_user_id = payload.get("user_id")
+    username = payload.get("username")
+
+    if not external_user_id or not username:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
+            detail="Invalid token: missing user_id or username",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Convert string user_id back to integer
-    try:
-        user_id = int(user_id_str)
-    except (ValueError, TypeError):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    # Convert user_id to string for consistency
+    external_user_id_str = str(external_user_id)
 
-    user = db.query(User).filter(User.id == user_id).first()
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    # Sync user from JWT to local database
+    user = sync_user_from_jwt(db, external_user_id_str, username)
 
     return user
 
@@ -126,13 +138,3 @@ def require_admin(
             detail="Admin access required"
         )
     return current_user
-
-
-def authenticate_user(db: Session, username: str, password: str) -> Optional[User]:
-    """Authenticate a user by username and password"""
-    user = db.query(User).filter(User.username == username).first()
-    if not user:
-        return None
-    if not verify_password(password, user.hashed_password):
-        return None
-    return user

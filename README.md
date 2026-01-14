@@ -1,88 +1,98 @@
-# Supplier Onboarding Platform
+# Enterprise AI Chatbot API
 
-A full-stack application for managing supplier onboarding with Nuxt 3 frontend and FastAPI backend, integrated with Neon.tech PostgreSQL database.
+A FastAPI-based chatbot API for enterprise onboarding, integrated with Supabase PostgreSQL database and external JWT authentication.
 
-## 🆕 Version 2.0 - Authentication & Approval Workflow
+## 🚀 Version 3.0 - External Authentication & Supabase Migration
 
-**New in v2.0:**
-- 🔐 **User Authentication** - JWT-based login/registration system
-- 👥 **Role-Based Access Control** - User and Admin roles
-- ✅ **Approval Workflow** - Admins review and approve/reject applications
-- 🔒 **One-Time Submission** - Each user can only submit one supplier application
-- 📊 **Admin Dashboard** - Manage all applications with statistics
-- 👤 **User Dashboard** - Track application status in real-time
+**New in v3.0:**
+- 🔐 **External JWT Authentication** - Integrates with main user system
+- 🔄 **Auto User Sync** - Users automatically created from JWT tokens
+- 🗄️ **Supabase Database** - Migrated from Neon to company Supabase
+- 🤖 **AI-Powered Chatbot** - Intelligent company onboarding assistant
+- 📊 **Data Collection** - Structured company and product information gathering
 
-📖 **See [AUTHENTICATION.md](./AUTHENTICATION.md) for complete authentication documentation**
+📖 **See [CHATBOT_MIGRATION_GUIDE.md](./CHATBOT_MIGRATION_GUIDE.md) for migration details**
 
 ## 🏗️ Tech Stack
 
-- **Frontend**: Nuxt 3 + Vue 3 + Nuxt UI
-- **Backend**: FastAPI + SQLAlchemy + JWT Authentication
-- **Database**: Neon.tech PostgreSQL (Free Tier)
-- **Language**: Python 3.9+ & TypeScript
-- **Security**: JWT tokens, bcrypt password hashing, RBAC
+- **Backend**: FastAPI + SQLAlchemy + External JWT Validation
+- **Database**: Supabase PostgreSQL
+- **AI**: OpenAI GPT-4o-mini for intelligent conversations
+- **Language**: Python 3.9+
+- **Security**: External JWT token validation, auto user sync
 
 ## 📋 Features
 
-### Authentication & Authorization
-- ✅ User registration and login
-- ✅ JWT token-based authentication
-- ✅ Password hashing with bcrypt
-- ✅ Role-based access control (User/Admin)
-- ✅ Protected routes and API endpoints
+### External Authentication
+- ✅ JWT token validation from main user system
+- ✅ Automatic user creation and synchronization
+- ✅ No local password management required
+- ✅ Seamless integration with existing user systems
+- ✅ Protected API endpoints with Bearer tokens
 
-### Supplier Onboarding
-- ✅ Supplier company information submission
-- ✅ One-time application per user
-- ✅ Application status tracking (pending/approved/rejected)
-- ✅ Form validation (frontend and backend)
-- ✅ Database integration with Neon.tech
-- ✅ RESTful API endpoints
+### AI Chatbot Capabilities
+- ✅ Intelligent conversational data collection
+- ✅ Natural language understanding (OpenAI GPT-4o-mini)
+- ✅ Sequential question-based flow (rule-based mode)
+- ✅ Multi-turn conversation support
+- ✅ Session management and history tracking
+- ✅ Progress tracking and completion detection
 
-### Admin Features
-- ✅ Review all supplier applications
-- ✅ Approve/reject applications with reasons
-- ✅ Filter applications by status
-- ✅ View statistics dashboard
-- ✅ Responsive UI with Nuxt UI components
-- ✅ Success/Error notifications
+### Data Collection
+- ✅ Company information (industry, capital, patents)
+- ✅ Certification data (including ESG)
+- ✅ Product details (multi-product support)
+- ✅ Structured JSON export format
+- ✅ Chinese language support (Traditional)
 
 ## 🚀 Setup Instructions
 
 ### Prerequisites
 
 - Python 3.9 or higher
-- Node.js 18 or higher
-- Neon.tech account with a database created
+- Supabase project with PostgreSQL database
+- Access to main user system's JWT secret key
+- OpenAI API key (optional, for AI chatbot mode)
 
 ### 1. Environment Configuration
 
-Create the `.env` file in the backend directory with your Neon.tech credentials:
+Create the `.env` file in the backend directory:
 
 ```bash
 cd backend
 cp .env.example .env
 ```
 
-Edit `backend/.env` and add your Neon.tech database URL and a secret key:
+Edit `backend/.env` with your configuration:
 
 ```env
-DATABASE_URL=postgresql://neondb_owner:your-password@ep-hostname.region.aws.neon.tech/neondb?sslmode=require
-SECRET_KEY=your-super-secret-key-change-this-in-production
+# Supabase Database
+DATABASE_URL=postgresql://postgres:your-password@db.your-project.supabase.co:5432/postgres
+
+# External JWT Authentication (from main system)
+EXTERNAL_JWT_SECRET=your-shared-jwt-secret-from-main-system
+
+# API Configuration
 API_HOST=0.0.0.0
 API_PORT=8000
+
+# OpenAI Configuration (optional)
+OPENAI_API_KEY=sk-your-openai-api-key
+OPENAI_MODEL=gpt-4o-mini
+USE_AI_CHATBOT=true
 ```
 
-**Generate a secure SECRET_KEY:**
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-```
-
-**How to get your Neon.tech DATABASE_URL:**
-1. Log in to your Neon.tech dashboard at https://console.neon.tech
+**How to get your Supabase DATABASE_URL:**
+1. Go to your Supabase Dashboard: https://supabase.com/dashboard
 2. Select your project
-3. Navigate to the "Connection Details" section
-4. Copy the **full** connection string (must include `@ep-...neon.tech` hostname part)
+3. Go to **Settings** → **Database**
+4. Find **Connection String** → **URI**
+5. Copy the connection string (replace `[YOUR-PASSWORD]` with actual password)
+
+**How to get EXTERNAL_JWT_SECRET:**
+1. Contact your main system developers
+2. Request the shared JWT secret key
+3. Confirm JWT payload includes `user_id` and `username`
 
 ### 2. Backend Setup
 
@@ -105,392 +115,491 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 python main.py
 ```
 
-### 3. Create Admin User
-
-**IMPORTANT:** After starting the backend for the first time, create an admin user:
-
-```bash
-cd backend
-python create_admin.py
-```
-
-Follow the interactive prompts to create your admin account. This account will have access to the admin dashboard to review and approve supplier applications.
-
-**Quick create (non-interactive):**
-```bash
-python create_admin.py admin admin@example.com secure_password
-```
-
 The API will be available at `http://localhost:8000`
 - API Documentation: `http://localhost:8000/docs`
 - Alternative Documentation: `http://localhost:8000/redoc`
 
-### 3. Frontend Setup
+### 3. Integration with Main System
 
-Install Node.js dependencies:
+The chatbot API expects JWT tokens from your main user system. The token should be passed in the Authorization header:
 
-```bash
-cd frontend
-npm install
+```
+Authorization: Bearer <jwt-token>
 ```
 
-Start the Nuxt development server:
-
-```bash
-npm run dev
+**Required JWT Payload:**
+```json
+{
+  "user_id": "12345",
+  "username": "john_doe"
+}
 ```
 
-The frontend will be available at `http://localhost:3000`
-
-## 🔄 Migrating Existing Data
-
-If you have existing `Company_Info` records from before v2.0, you need to link them to a user:
-
-**Option 1: Link to Admin User (Keep Old Data)**
-```sql
--- Run this in Neon.tech SQL Editor
-UPDATE "Company_Info"
-SET user_id = (SELECT id FROM users WHERE role = 'admin' LIMIT 1),
-    status = 'approved',
-    created_at = NOW()
-WHERE user_id IS NULL;
-```
-
-**Option 2: Delete Old Data (Fresh Start)**
-```sql
-DELETE FROM "Company_Info" WHERE user_id IS NULL;
-```
+Users will be automatically created in the chatbot database on their first API call.
 
 ## 📊 Database Schema
 
-### Users Table
-| Column Name      | Type         | Constraints    | Description                |
-|-----------------|--------------|----------------|----------------------------|
-| id              | INTEGER      | PRIMARY KEY    | Auto-increment user ID     |
-| username        | VARCHAR(50)  | UNIQUE, NOT NULL | Username                  |
-| email           | VARCHAR(100) | UNIQUE, NOT NULL | Email address             |
-| hashed_password | VARCHAR(255) | NOT NULL       | Bcrypt hashed password     |
-| role            | ENUM         | NOT NULL       | 'user' or 'admin'          |
-| created_at      | TIMESTAMP    | NOT NULL       | Account creation time      |
+### Core Chatbot Tables
 
-### Company_Info Table
-| Column Name      | Type         | Constraints    | Description                |
-|-----------------|--------------|----------------|----------------------------|
-| Company_ID      | VARCHAR(50)  | PRIMARY KEY    | 統一編號 (Business ID)      |
-| Company_Name    | VARCHAR(100) | NOT NULL       | 企業名稱 (Company Name)     |
-| Company_Head    | VARCHAR(80)  | NOT NULL       | 負責人 (Person in Charge)   |
-| Company_Email   | VARCHAR(50)  | NOT NULL       | 聯絡 Email (Contact Email)  |
-| Company_Link    | VARCHAR(200) | NULLABLE       | 公司網址 (Company Website)  |
-| user_id         | INTEGER      | FK → users.id  | User who submitted         |
-| status          | ENUM         | NOT NULL       | pending/approved/rejected  |
-| reviewed_by     | INTEGER      | FK → users.id  | Admin who reviewed         |
-| reviewed_at     | TIMESTAMP    | NULLABLE       | Review timestamp           |
-| created_at      | TIMESTAMP    | NOT NULL       | Submission timestamp       |
-| rejection_reason| VARCHAR(500) | NULLABLE       | Reason if rejected         |
+#### Users Table (Auto-synced from main system)
+| Column Name       | Type         | Constraints      | Description                    |
+|------------------|--------------|------------------|--------------------------------|
+| id               | INTEGER      | PRIMARY KEY      | Local database user ID         |
+| external_user_id | VARCHAR(100) | UNIQUE, NOT NULL | User ID from main system       |
+| username         | VARCHAR(50)  | NOT NULL         | Username from main system      |
+| role             | ENUM         | NOT NULL         | 'user' or 'admin'              |
+| is_active        | BOOLEAN      | NOT NULL         | Account active status          |
+| created_at       | TIMESTAMP    | NOT NULL         | First sync timestamp           |
+| updated_at       | TIMESTAMP    | NOT NULL         | Last sync timestamp            |
+
+#### Chat Sessions Table
+| Column Name  | Type      | Constraints      | Description                        |
+|-------------|-----------|------------------|------------------------------------|
+| id          | INTEGER   | PRIMARY KEY      | Auto-increment session ID          |
+| user_id     | INTEGER   | FK → users.id    | User who owns the session          |
+| status      | ENUM      | NOT NULL         | active/completed/abandoned         |
+| created_at  | TIMESTAMP | NOT NULL         | Session creation time              |
+| updated_at  | TIMESTAMP | NOT NULL         | Last activity time                 |
+| completed_at| TIMESTAMP | NULLABLE         | Completion timestamp               |
+
+#### Chat Messages Table
+| Column Name | Type      | Constraints         | Description                     |
+|------------|-----------|---------------------|---------------------------------|
+| id         | INTEGER   | PRIMARY KEY         | Auto-increment message ID       |
+| session_id | INTEGER   | FK → chat_sessions.id | Session this message belongs to|
+| role       | VARCHAR(20)| NOT NULL           | 'user' or 'assistant'           |
+| content    | TEXT      | NOT NULL            | Message content                 |
+| created_at | TIMESTAMP | NOT NULL            | Message timestamp               |
+
+#### Company Onboarding Table (Collected by Chatbot)
+| Column Name              | Type      | Constraints              | Description                          |
+|-------------------------|-----------|--------------------------|--------------------------------------|
+| id                      | INTEGER   | PRIMARY KEY              | Auto-increment onboarding ID         |
+| chat_session_id         | INTEGER   | FK → chat_sessions.id, UNIQUE | Associated chat session        |
+| user_id                 | INTEGER   | FK → users.id            | User who provided the data           |
+| industry                | VARCHAR(100) | NULLABLE              | 產業別                               |
+| capital_amount          | INTEGER   | NULLABLE                 | 資本總額 (in 臺幣)                   |
+| invention_patent_count  | INTEGER   | NULLABLE                 | 發明專利數量                         |
+| utility_patent_count    | INTEGER   | NULLABLE                 | 新型專利數量                         |
+| certification_count     | INTEGER   | NULLABLE                 | 公司認證資料數量                     |
+| esg_certification       | BOOLEAN   | NULLABLE                 | ESG相關認證資料                      |
+| created_at              | TIMESTAMP | NOT NULL                 | Data creation time                   |
+| updated_at              | TIMESTAMP | NOT NULL                 | Last update time                     |
+
+#### Products Table (Sub-records of company onboarding)
+| Column Name           | Type         | Constraints                  | Description                      |
+|----------------------|--------------|------------------------------|----------------------------------|
+| id                   | INTEGER      | PRIMARY KEY                  | Auto-increment product ID        |
+| onboarding_id        | INTEGER      | FK → company_onboarding.id   | Parent onboarding record         |
+| product_id           | VARCHAR(100) | NULLABLE                     | 產品ID                           |
+| product_name         | VARCHAR(200) | NULLABLE                     | 產品名稱                         |
+| price                | VARCHAR(50)  | NULLABLE                     | 價格                             |
+| main_raw_materials   | VARCHAR(500) | NULLABLE                     | 主要原料                         |
+| product_standard     | VARCHAR(200) | NULLABLE                     | 產品規格(尺寸、精度)             |
+| technical_advantages | TEXT         | NULLABLE                     | 技術優勢                         |
+| created_at           | TIMESTAMP    | NOT NULL                     | Product creation time            |
+
+### Other Tables (Not Chatbot Responsibility)
+
+The `Company_Info` table exists but is managed by other systems, not this chatbot API.
 
 ## 🔌 API Endpoints
 
-### Authentication Endpoints
+### Authentication
 
-**Register New User**
+All endpoints require a JWT token from the main user system:
+
 ```http
-POST /api/auth/register
-Content-Type: application/json
-
-{
-  "username": "john_doe",
-  "email": "john@example.com",
-  "password": "secure_password123"
-}
+Authorization: Bearer <jwt-token-from-main-system>
 ```
 
-**Login**
-```http
-POST /api/auth/login
-Content-Type: application/json
+### User Endpoints
 
-{
-  "username": "john_doe",
-  "password": "secure_password123"
-}
-```
-
-**Get Current User**
+**Get Current User (Auto-sync from JWT)**
 ```http
 GET /api/auth/me
 Authorization: Bearer <token>
+
+Response:
+{
+  "id": 1,
+  "external_user_id": "12345",
+  "username": "john_doe",
+  "role": "user",
+  "is_active": true,
+  "created_at": "2024-01-01T00:00:00",
+  "updated_at": "2024-01-01T00:00:00"
+}
 ```
 
-### Company/Application Endpoints (Authenticated)
+### Chatbot Endpoints
 
-**Submit Supplier Application**
+**Create New Chat Session**
 ```http
-POST /api/companies
+POST /api/chatbot/sessions/new
+Authorization: Bearer <token>
+
+Response:
+{
+  "session_id": 1,
+  "message": "您好！我是企業導入 AI 助理 🤖...",
+  "company_info_copied": false,
+  "progress": {...}
+}
+```
+
+**Send Message to Chatbot**
+```http
+POST /api/chatbot/message
 Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "company_id": "23456789",
-  "company_name": "智群科技股份有限公司",
-  "company_head": "林小明",
-  "company_email": "sales@accton.com",
-  "company_link": "https://www.accton.com"
+  "message": "我的公司是電子業",
+  "session_id": 1
 }
-```
 
-**Get My Application**
-```http
-GET /api/companies/my-application
-Authorization: Bearer <token>
-```
-
-**Get Specific Application**
-```http
-GET /api/companies/{company_id}
-Authorization: Bearer <token>
-```
-
-### Admin Endpoints (Admin Only)
-
-**Get All Applications**
-```http
-GET /api/admin/applications?status_filter=pending
-Authorization: Bearer <admin_token>
-```
-
-**Review Application**
-```http
-PUT /api/admin/applications/{company_id}/review
-Authorization: Bearer <admin_token>
-Content-Type: application/json
-
+Response:
 {
-  "action": "approve"
+  "session_id": 1,
+  "message": "好的，您的公司屬於電子業...",
+  "completed": false,
+  "progress": {...}
 }
 ```
 
-**Get Statistics**
+**Get All Chat Sessions**
 ```http
-GET /api/admin/stats
-Authorization: Bearer <admin_token>
+GET /api/chatbot/sessions
+Authorization: Bearer <token>
+
+Response:
+[
+  {
+    "id": 1,
+    "user_id": 1,
+    "status": "active",
+    "created_at": "2024-01-01T00:00:00",
+    "updated_at": "2024-01-01T00:00:00"
+  }
+]
+```
+
+**Get Latest Active Session**
+```http
+GET /api/chatbot/sessions/latest
+Authorization: Bearer <token>
+
+Response:
+{
+  "session_id": 1,
+  "status": "active",
+  "created_at": "2024-01-01T00:00:00"
+}
+```
+
+**Get Session Messages**
+```http
+GET /api/chatbot/sessions/{session_id}/messages
+Authorization: Bearer <token>
+
+Response:
+[
+  {
+    "id": 1,
+    "session_id": 1,
+    "role": "assistant",
+    "content": "您好！我是企業導入 AI 助理...",
+    "created_at": "2024-01-01T00:00:00"
+  }
+]
+```
+
+**Get Collected Onboarding Data**
+```http
+GET /api/chatbot/data/{session_id}
+Authorization: Bearer <token>
+
+Response:
+{
+  "id": 1,
+  "chat_session_id": 1,
+  "industry": "電子業",
+  "capital_amount": 5000000,
+  "invention_patent_count": 10,
+  "products": [...]
+}
+```
+
+**Export Session Data**
+```http
+GET /api/chatbot/export/{session_id}
+Authorization: Bearer <token>
+
+Response:
+{
+  "產業別": "電子業",
+  "資本總額（以臺幣為單位）": 5000000,
+  "發明專利數量": 10,
+  "產品": [...]
+}
+```
+
+**Export All Completed Sessions**
+```http
+GET /api/chatbot/export/all
+Authorization: Bearer <token>
+
+Response:
+[
+  {
+    "產業別": "電子業",
+    ...
+  }
+]
 ```
 
 ## 🧪 Testing
 
-### Test User Workflow
+### Generate Test JWT Token
 
-1. **Visit** http://localhost:3000
-2. **Register** a new user account
-3. **Login** with your credentials
-4. **Submit** a supplier application (one-time only)
-5. **Track** application status in dashboard
+Create a test token for development:
 
-### Test Admin Workflow
+```python
+# backend/test_token.py
+from jose import jwt
 
-1. **Login** as admin at http://localhost:3000/login
-2. **Review** pending applications at http://localhost:3000/admin/review
-3. **Approve/Reject** applications with optional reasons
-4. **View** statistics dashboard
+EXTERNAL_JWT_SECRET = "your-shared-secret"  # Same as .env
 
-### Test Backend API
+token = jwt.encode(
+    {
+        "user_id": "test123",
+        "username": "testuser"
+    },
+    EXTERNAL_JWT_SECRET,
+    algorithm="HS256"
+)
+
+print(f"Test Token:\n{token}")
+```
+
+Run:
+```bash
+cd backend
+python test_token.py
+```
+
+### Test Chatbot API
 
 Using curl:
 ```bash
+# Set your test token
+TOKEN="your-generated-jwt-token"
+
 # Health check
 curl http://localhost:8000/
 
-# Register user
-curl -X POST http://localhost:8000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "testuser",
-    "email": "test@example.com",
-    "password": "password123"
-  }'
+# Get current user (auto-creates user from JWT)
+curl http://localhost:8000/api/auth/me \
+  -H "Authorization: Bearer $TOKEN"
 
-# Login
-TOKEN=$(curl -X POST http://localhost:8000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "testuser", "password": "password123"}' \
-  | jq -r '.access_token')
+# Create new chat session
+curl -X POST http://localhost:8000/api/chatbot/sessions/new \
+  -H "Authorization: Bearer $TOKEN"
 
-# Submit application (requires token)
-curl -X POST http://localhost:8000/api/companies \
-  -H "Content-Type: application/json" \
+# Send message to chatbot
+curl -X POST http://localhost:8000/api/chatbot/message \
   -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
   -d '{
-    "company_id": "23456789",
-    "company_name": "智群科技股份有限公司",
-    "company_head": "林小明",
-    "company_email": "sales@accton.com",
-    "company_link": "https://www.accton.com"
+    "message": "我的公司是電子業",
+    "session_id": 1
   }'
+
+# Get session messages
+curl http://localhost:8000/api/chatbot/sessions/1/messages \
+  -H "Authorization: Bearer $TOKEN"
+
+# Export collected data
+curl http://localhost:8000/api/chatbot/export/1 \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-Or use the interactive API documentation at `http://localhost:8000/docs`
+### Interactive API Documentation
+
+Visit `http://localhost:8000/docs` for Swagger UI with interactive testing.
+
+**To test with JWT:**
+1. Click "Authorize" button in Swagger UI
+2. Enter: `Bearer your-jwt-token`
+3. Click "Authorize"
+4. Test any endpoint
 
 ## 📁 Project Structure
 
 ```
-AI_recommend/
+enterprise-solutions/
 ├── backend/
-│   ├── main.py              # FastAPI application & API routes
-│   ├── auth.py              # JWT authentication & authorization
-│   ├── config.py            # Configuration settings
-│   ├── database.py          # Database connection
-│   ├── models.py            # SQLAlchemy models (User, CompanyInfo)
-│   ├── schemas.py           # Pydantic validation schemas
-│   ├── create_admin.py      # Admin user creation script
-│   ├── setup_database.sql   # Manual database setup (if needed)
-│   ├── requirements.txt     # Python dependencies
-│   └── .env                 # Environment variables (not in git)
-├── frontend/
-│   ├── pages/
-│   │   ├── index.vue         # Landing page
-│   │   ├── login.vue         # Login page
-│   │   ├── register.vue      # Registration page
-│   │   ├── dashboard.vue     # User dashboard
-│   │   ├── onboarding.vue    # Supplier application form
-│   │   └── admin/
-│   │       └── review.vue    # Admin review dashboard
-│   ├── composables/
-│   │   └── useApi.ts         # API integration with auth
-│   ├── app.vue               # Root component
-│   ├── nuxt.config.ts        # Nuxt configuration
-│   └── package.json          # Node.js dependencies
-├── AUTHENTICATION.md         # Complete auth documentation
-├── .env.example             # Example environment variables
-└── README.md                # This file
+│   ├── main.py                     # FastAPI application & chatbot routes
+│   ├── auth.py                     # External JWT validation & user sync
+│   ├── config.py                   # Configuration settings
+│   ├── database.py                 # Supabase database connection
+│   ├── models.py                   # SQLAlchemy models (User, ChatSession, etc.)
+│   ├── schemas.py                  # Pydantic validation schemas
+│   ├── chatbot_handler.py          # Rule-based chatbot logic
+│   ├── ai_chatbot_handler.py       # AI-powered chatbot logic
+│   ├── create_admin.py             # Admin user creation utility
+│   ├── view_database.py            # Database viewer utility
+│   ├── requirements.txt            # Python dependencies
+│   ├── .env                        # Environment variables (not in git)
+│   ├── .env.example                # Example environment variables
+│   └── migrations/
+│       └── 003_remove_company_info_fields.py
+├── CHATBOT_MIGRATION_GUIDE.md      # Migration documentation
+└── README.md                       # This file
 ```
 
 ## 🔒 Security Notes
 
-- ✅ **JWT tokens** used for authentication (24-hour expiration)
-- ✅ **Bcrypt** password hashing for secure storage
+- ✅ **External JWT validation** for authentication
+- ✅ **Auto user synchronization** from main system
+- ✅ **No password storage** in chatbot database
+- ✅ **Protected API endpoints** require valid JWT tokens
 - ✅ **Role-based access control** (User/Admin)
-- ✅ **Protected API endpoints** require authentication
 - ⚠️ **Never commit `.env`** file to version control
-- ⚠️ **Generate secure SECRET_KEY** for production
-- ⚠️ **Update CORS settings** in production to only allow your frontend domain
+- ⚠️ **EXTERNAL_JWT_SECRET must match** main system secret
+- ⚠️ **Update CORS settings** in production
 - ⚠️ **Use HTTPS** in production environments
+- ⚠️ **Protect JWT secret** - never expose in client-side code
 
-## 🎨 UI Features
+## 🎨 Chatbot Features
 
-- Modern interface with Nuxt UI components
-- JWT-based authentication
-- Protected routes with auth guards
-- Real-time application status tracking
-- Admin dashboard with statistics
-- Form validation (frontend + backend)
-- Loading states and toast notifications
-- Responsive design
+- Intelligent conversational interface (AI mode)
+- Sequential question flow (rule-based mode)
+- Multi-turn conversation support
+- Progress tracking and completion detection
+- Session history and resume capability
+- Structured data collection and export
 - Chinese (Traditional) language support
+- Real-time message streaming
+- Context-aware responses
 
 ## 📝 Future Enhancements
 
 Potential features to add:
 
-1. ✅ ~~Authentication~~ - **DONE in v2.0**
-2. ✅ ~~Admin Panel~~ - **DONE in v2.0**
-3. **Email Notifications** - Send emails on status changes
-4. **Refresh Tokens** - Implement refresh token mechanism
-5. **AI Integration** - Implement the "AI 資料整合" step
-6. **File Upload** - Allow uploading company documents
-7. **Password Reset** - Email-based password reset
-8. **Two-Factor Authentication** - Add 2FA for extra security
-9. **LangGraph Integration** - AI-powered chat assistance
-10. **Email Verification** - Verify email on registration
+1. ✅ ~~External JWT Authentication~~ - **DONE in v3.0**
+2. ✅ ~~Supabase Migration~~ - **DONE in v3.0**
+3. ✅ ~~AI Chatbot~~ - **DONE in v2.0**
+4. **Webhook Notifications** - Notify main system on completion
+5. **Multi-language Support** - English, Simplified Chinese
+6. **Voice Input** - Speech-to-text for chatbot
+7. **File Upload** - Allow document uploads during chat
+8. **Advanced Analytics** - Track chatbot performance metrics
+9. **LangGraph Integration** - More sophisticated conversation flows
+10. **Chatbot Customization** - Configurable chatbot personality
 
 ## 🐛 Troubleshooting
 
-### Authentication Issues
+### JWT Authentication Issues
 
-**Problem:** 401 Unauthorized errors
+**Problem:** 401 Unauthorized - "Could not validate credentials"
 ```
 Solution:
-1. Ensure you're logged in
-2. Check if token exists: localStorage.getItem('access_token')
-3. Token may be expired (24h) - login again
-4. SECRET_KEY must be set in backend/.env
-```
-
-**Problem:** "Could not validate credentials"
-```
-Solution:
-1. Verify SECRET_KEY in .env matches what backend is using
-2. Restart backend after changing SECRET_KEY
-3. Clear browser localStorage and login again
+1. Verify EXTERNAL_JWT_SECRET in .env matches main system
+2. Check JWT token format includes user_id and username
+3. Ensure token is not expired
 4. Check backend logs for detailed JWT errors
+5. Restart backend after changing EXTERNAL_JWT_SECRET
 ```
 
-**Problem:** "Subject must be a string" JWT error
+**Problem:** "Invalid token: missing user_id or username"
 ```
-Solution: This is fixed in latest code (v2.0)
-- User IDs are now converted to strings in JWT tokens
+Solution:
+1. JWT payload must include both fields:
+   {"user_id": "123", "username": "john"}
+2. Verify main system JWT generation code
+3. Test with manually generated token (see Testing section)
+```
+
+**Problem:** User not auto-created
+```
+Solution:
+1. Check backend logs for errors
+2. Verify JWT token is valid
+3. Ensure database tables are created (check startup logs)
+4. Verify DATABASE_URL is correct
 ```
 
 ### Database Issues
 
-**Problem:** "user_id cannot be null" or validation errors
-```
-Solution: Migrate existing Company_Info records
-UPDATE "Company_Info"
-SET user_id = (SELECT id FROM users WHERE role = 'admin' LIMIT 1),
-    status = 'approved'
-WHERE user_id IS NULL;
-```
-
-**Problem:** Database connection issues
+**Problem:** Database connection errors
 ```
 Solution:
-- Verify DATABASE_URL in .env is correct
-- Ensure Neon.tech project is active (free tier may pause)
-- Check your IP is allowed in Neon.tech settings
+1. Verify DATABASE_URL in .env is correct
+2. Ensure Supabase project is active
+3. Check database password in connection string
+4. Test connection in Supabase dashboard
+5. Verify network/firewall settings
+```
+
+**Problem:** "relation does not exist" errors
+```
+Solution:
+- Tables are auto-created on first startup
+- Restart the backend to trigger table creation
+- Check backend logs for creation errors
+- Verify Supabase database permissions
 ```
 
 **Problem:** ENUM type errors
 ```
-Solution: Run backend/setup_database.sql in Neon.tech SQL Editor
-This creates the required ENUM types (userrole, applicationstatus)
+Solution:
+Tables are auto-created with ENUM types.
+If manual creation needed, check models.py for ENUM definitions.
 ```
 
 ### Installation Issues
 
-**Problem:** psycopg2-binary installation fails (Python 3.13)
-```
-Solution: Use psycopg2-binary==2.9.10 or higher
-Or use Python 3.12 (recommended for better package support)
-```
-
-**Problem:** bcrypt/passlib compatibility errors
+**Problem:** psycopg2-binary installation fails
 ```
 Solution:
-pip uninstall bcrypt passlib -y
-pip install passlib==1.7.4 bcrypt==4.0.1
+pip install psycopg2-binary==2.9.10
+Or use Python 3.9-3.12 (recommended)
 ```
 
-**Problem:** pydantic requires Rust compiler
-```
-Solution: Upgrade to pydantic==2.10.5 or higher
-(Has pre-built wheels for Python 3.13)
-```
-
-### Frontend Issues
-
-**Problem:** "GET /api/companies/my-application 401"
+**Problem:** python-jose installation fails
 ```
 Solution:
-1. Check if logged in: api.isAuthenticated()
-2. Check token in localStorage
-3. Clear cache and login again
+pip install python-jose[cryptography]==3.3.0
+Ensure cryptography package is installed
 ```
 
-**Problem:** Admin dashboard shows "目前沒有的申請"
+**Problem:** OpenAI module errors
 ```
 Solution:
-- Existing records need user_id (see Database Issues above)
-- Check backend logs for errors
-- Verify admin token is valid
+pip install openai==1.54.0
+Check OPENAI_API_KEY is set if using AI mode
+```
+
+### Chatbot Issues
+
+**Problem:** Chatbot not responding
+```
+Solution:
+1. Check USE_AI_CHATBOT setting in .env
+2. If AI mode: Verify OPENAI_API_KEY is valid
+3. Check backend logs for errors
+4. Ensure session_id is correct
+```
+
+**Problem:** Data not saving
+```
+Solution:
+1. Check database connection
+2. Verify user has active session
+3. Check backend logs for SQL errors
+4. Ensure session is not already completed
 ```
 
 ### General Issues
@@ -498,20 +607,19 @@ Solution:
 **Problem:** CORS errors
 ```
 Solution:
-- Backend should run on http://localhost:8000
-- Frontend should run on http://localhost:3000
+- Backend runs on http://localhost:8000
 - Check CORS settings in backend/main.py
+- Verify frontend URL is allowed
 ```
 
 **Problem:** Module not found errors
 ```
 Solution:
-- Backend: pip install -r backend/requirements.txt
-- Frontend: npm install (in frontend/)
-- Frontend: npm run prepare (generates Nuxt types)
+cd backend
+pip install -r requirements.txt
 ```
 
-**Need more help?** See [AUTHENTICATION.md](./AUTHENTICATION.md) for detailed documentation.
+**Need more help?** See [CHATBOT_MIGRATION_GUIDE.md](./CHATBOT_MIGRATION_GUIDE.md) for detailed migration documentation.
 
 ## 📄 License
 

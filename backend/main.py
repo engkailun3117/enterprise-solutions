@@ -9,14 +9,12 @@ from database import get_db, engine, Base
 from models import CompanyInfo, User, UserRole, ApplicationStatus, ChatSession, ChatMessage, CompanyOnboarding, Product, ChatSessionStatus
 from schemas import (
     CompanyInfoCreate, CompanyInfoResponse,
-    UserRegister, UserLogin, TokenResponse, UserResponse, ReviewAction,
-    PasswordResetRequest, PasswordResetConfirm,
+    UserResponse, ReviewAction,
     ChatMessageCreate, ChatResponse, ChatSessionResponse, ChatMessageResponse,
     OnboardingDataResponse
 )
 from config import get_settings
 from auth import (
-    get_password_hash, authenticate_user, create_access_token,
     get_current_active_user, require_admin
 )
 from chatbot_handler import ChatbotHandler
@@ -67,98 +65,6 @@ async def root():
 
 # ============== Authentication Endpoints ==============
 
-@app.post("/api/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def register(
-    user_data: UserRegister,
-    db: Session = Depends(get_db)
-):
-    """
-    Register a new user account
-
-    - **username**: Unique username (3-50 characters)
-    - **email**: Unique email address
-    - **password**: Password (minimum 6 characters)
-
-    Returns JWT token and user information
-    """
-    # Check if username already exists
-    existing_user = db.query(User).filter(User.username == user_data.username).first()
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered"
-        )
-
-    # Check if email already exists
-    existing_email = db.query(User).filter(User.email == user_data.email).first()
-    if existing_email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-
-    try:
-        # Create new user
-        hashed_password = get_password_hash(user_data.password)
-        new_user = User(
-            username=user_data.username,
-            email=user_data.email,
-            hashed_password=hashed_password,
-            role=UserRole.USER  # Default role
-        )
-
-        db.add(new_user)
-        db.commit()
-        db.refresh(new_user)
-
-        # Create access token
-        access_token = create_access_token(data={"sub": str(new_user.id)})
-
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user": new_user.to_dict()
-        }
-
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred during registration: {str(e)}"
-        )
-
-
-@app.post("/api/auth/login", response_model=TokenResponse)
-async def login(
-    credentials: UserLogin,
-    db: Session = Depends(get_db)
-):
-    """
-    Login with username and password
-
-    - **username**: Your username
-    - **password**: Your password
-
-    Returns JWT token and user information
-    """
-    user = authenticate_user(db, credentials.username, credentials.password)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Create access token
-    access_token = create_access_token(data={"sub": str(user.id)})
-
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": user.to_dict()
-    }
-
-
 @app.get("/api/auth/me", response_model=UserResponse)
 async def get_current_user_info(
     current_user: User = Depends(get_current_active_user)
@@ -166,65 +72,12 @@ async def get_current_user_info(
     """
     Get current authenticated user information
 
-    Requires: Valid JWT token in Authorization header
+    Requires: Valid JWT token from main system in Authorization header
+
+    This endpoint automatically syncs user data from the JWT token to the local database.
+    If the user doesn't exist locally, it will be created automatically.
     """
     return current_user.to_dict()
-
-
-@app.post("/api/auth/forgot-password", status_code=status.HTTP_200_OK)
-async def request_password_reset(
-    request: PasswordResetRequest,
-    db: Session = Depends(get_db)
-):
-    """
-    Request a password reset email
-
-    - **email**: Email address of the user
-
-    Sends a password reset link to the user's email (if account exists)
-    Always returns success to prevent email enumeration
-    """
-    # Find user by email
-    user = db.query(User).filter(User.email == request.email).first()
-
-    if user:
-        # In a real application, you would:
-        # 1. Generate a secure reset token
-        # 2. Store it in database with expiration time
-        # 3. Send email with reset link containing the token
-        # For now, we'll just simulate success
-        pass
-
-    # Always return success to prevent email enumeration
-    return {
-        "message": "If the email exists, a password reset link has been sent",
-        "email": request.email
-    }
-
-
-@app.post("/api/auth/reset-password", status_code=status.HTTP_200_OK)
-async def reset_password(
-    request: PasswordResetConfirm,
-    db: Session = Depends(get_db)
-):
-    """
-    Reset password using a reset token
-
-    - **token**: Password reset token
-    - **new_password**: New password (minimum 6 characters)
-
-    Resets the user's password if the token is valid
-    """
-    # In a real application, you would:
-    # 1. Verify the reset token
-    # 2. Check if it's not expired
-    # 3. Find the associated user
-    # 4. Update the password
-    # For now, this is a placeholder that returns success
-
-    return {
-        "message": "Password has been reset successfully"
-    }
 
 
 # ============== User Endpoints ==============
