@@ -313,7 +313,7 @@ async def upload_file_for_extraction(
         )
 
         # Process AI response and update database
-        ai_message = ai_response.choices[0].message.content or "已處理文件並提取資訊。"
+        ai_message = ai_response.choices[0].message.content or ""
         data_updated = False
         products_added = 0
 
@@ -329,6 +329,17 @@ async def upload_file_for_extraction(
                 elif function_name == "add_product":
                     if handler.add_product(function_args):
                         products_added += 1
+
+        # Generate context-aware message if AI didn't provide one
+        if not ai_message:
+            if data_updated and products_added > 0:
+                ai_message = f"已從文件中提取公司資料並新增了 {products_added} 個產品！資料已自動填入對應欄位。"
+            elif data_updated:
+                ai_message = "已從文件中提取公司資料！資料已自動填入對應欄位。"
+            elif products_added > 0:
+                ai_message = f"已從文件中提取 {products_added} 個產品資訊！資料已自動填入。"
+            else:
+                ai_message = "已處理文件，但未找到可提取的公司資料。您可以手動提供資訊。"
 
         # Save the AI message to conversation history
         handler.add_message("assistant", f"📄 已處理文件：{file.filename}\n\n{ai_message}")

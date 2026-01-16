@@ -480,22 +480,36 @@ class AIChatbotHandler:
 
         # Process function calls
         completed = False
+        data_updated = False
+        products_added = 0
+
         if "function_calls" in ai_result:
             for call in ai_result["function_calls"]:
                 if call["name"] == "update_company_data":
-                    self.update_onboarding_data(call["arguments"])
+                    if self.update_onboarding_data(call["arguments"]):
+                        data_updated = True
                 elif call["name"] == "add_product":
-                    self.add_product(call["arguments"])
+                    if self.add_product(call["arguments"]):
+                        products_added += 1
                 elif call["name"] == "mark_completed":
                     if call["arguments"].get("completed"):
                         self.session.status = ChatSessionStatus.COMPLETED
                         self.db.commit()
                         completed = True
 
-        # Return AI response
+        # Return AI response with context-aware fallback
         response_message = ai_result.get("message", "")
         if not response_message:
-            response_message = "我已經記錄您的資訊。請繼續提供其他資料。"
+            # Generate appropriate message based on what was updated
+            if data_updated and products_added > 0:
+                response_message = f"好的！我已更新公司資料並新增了 {products_added} 個產品。還有其他資訊要補充嗎？"
+            elif data_updated:
+                response_message = "好的！我已更新您的公司資料。還有其他資訊要補充嗎？"
+            elif products_added > 0:
+                response_message = f"好的！我已新增了 {products_added} 個產品。還有其他產品或資訊要補充嗎？"
+            else:
+                # No functions were called - user might be chatting
+                response_message = "我理解了。請繼續提供資訊，或告訴我您需要什麼幫助。"
 
         return response_message, completed
 
