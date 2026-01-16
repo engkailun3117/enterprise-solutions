@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -168,7 +168,7 @@ async def send_chatbot_message(
 @app.post("/api/chatbot/upload-file")
 async def upload_file_for_extraction(
     file: UploadFile = File(...),
-    session_id: Optional[int] = None,
+    session_id: Optional[int] = Form(None),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
