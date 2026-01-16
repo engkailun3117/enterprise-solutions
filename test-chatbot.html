@@ -336,7 +336,6 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/jose@4.14.4/dist/browser/index.js"></script>
     <script>
         const API_BASE = 'http://localhost:8000';
         const JWT_SECRET = 'your-shared-secret-key'; // Change this to match your EXTERNAL_JWT_SECRET
@@ -359,23 +358,64 @@
         const fileUploadArea = document.getElementById('fileUploadArea');
         const fileInput = document.getElementById('fileInput');
 
-        // Generate JWT token
+        // Base64URL encoding helper
+        function base64urlEncode(str) {
+            return btoa(String.fromCharCode.apply(null, new Uint8Array(str)))
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_')
+                .replace(/=/g, '');
+        }
+
+        // Generate JWT token using Web Crypto API
         async function generateToken() {
-            const encoder = new TextEncoder();
-            const secret = encoder.encode(JWT_SECRET);
+            try {
+                // Create JWT header
+                const header = {
+                    alg: 'HS256',
+                    typ: 'JWT'
+                };
 
-            const payload = {
-                user_id: USER_ID,
-                username: USERNAME,
-                exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
-            };
+                // Create JWT payload
+                const payload = {
+                    user_id: USER_ID,
+                    username: USERNAME,
+                    exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
+                };
 
-            token = await new jose.SignJWT(payload)
-                .setProtectedHeader({ alg: 'HS256' })
-                .setExpirationTime('24h')
-                .sign(secret);
+                // Encode header and payload
+                const encodedHeader = base64urlEncode(new TextEncoder().encode(JSON.stringify(header)));
+                const encodedPayload = base64urlEncode(new TextEncoder().encode(JSON.stringify(payload)));
 
-            console.log('Generated JWT token:', token);
+                // Create the string to sign
+                const signatureInput = `${encodedHeader}.${encodedPayload}`;
+
+                // Import secret key
+                const key = await crypto.subtle.importKey(
+                    'raw',
+                    new TextEncoder().encode(JWT_SECRET),
+                    { name: 'HMAC', hash: 'SHA-256' },
+                    false,
+                    ['sign']
+                );
+
+                // Sign the token
+                const signature = await crypto.subtle.sign(
+                    'HMAC',
+                    key,
+                    new TextEncoder().encode(signatureInput)
+                );
+
+                // Encode signature
+                const encodedSignature = base64urlEncode(signature);
+
+                // Create final JWT token
+                token = `${signatureInput}.${encodedSignature}`;
+
+                console.log('Generated JWT token:', token);
+            } catch (error) {
+                console.error('Failed to generate token:', error);
+                throw new Error('JWT generation failed: ' + error.message);
+            }
         }
 
         // API request helper
