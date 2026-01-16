@@ -57,10 +57,18 @@ class AIChatbotHandler:
         self.db.commit()
         self.db.refresh(self.session)
 
-        # Create empty onboarding data
+        # Mark all previous records as not current
+        self.db.query(CompanyOnboarding).filter(
+            CompanyOnboarding.user_id == self.user_id,
+            CompanyOnboarding.is_current == True
+        ).update({"is_current": False})
+        self.db.commit()
+
+        # Create new onboarding data marked as current
         self.onboarding_data = CompanyOnboarding(
             chat_session_id=self.session.id,
-            user_id=self.user_id
+            user_id=self.user_id,
+            is_current=True
         )
         self.db.add(self.onboarding_data)
         self.db.commit()
@@ -103,7 +111,7 @@ class AIChatbotHandler:
    - ESG相關認證（有/無）
 
 3. 收集產品資訊（可以有多個產品）：
-   - 產品ID
+   - 產品ID（⚠️ 必須是唯一的，例如：PROD001、PROD002）
    - 產品名稱
    - 價格
    - 主要原料
@@ -117,6 +125,16 @@ class AIChatbotHandler:
 - 保持對話自然流暢，但堅持逐個收集資料
 - 你的責任範圍僅限於上述資料的收集
 
+🔄 **更新現有資料**：
+- 如果使用者說要「修改」、「更新」或「更正」某個資料，直接使用 update_onboarding_data 函數更新
+- 使用者可以隨時修改已填寫的任何欄位
+- 更新後要確認：「已更新 [欄位名稱] 為 [新值]」
+
+📝 **產品ID指引**：
+- 收集產品資訊時，先詢問「請提供產品ID（例如：PROD001、SKU-001等）」
+- 強調產品ID必須是唯一的識別碼
+- 如果使用者不清楚，建議格式：「PROD001」、「PROD002」等
+
 📎 **文件上傳功能**：
 - 系統支援文件上傳功能（PDF、Word、圖片、TXT），可自動提取公司資料
 - 當使用者詢問是否能上傳文件時，告訴他們**可以上傳**，並鼓勵使用此功能
@@ -125,7 +143,34 @@ class AIChatbotHandler:
 
     def get_initial_greeting(self) -> str:
         """Get the initial greeting with menu options"""
-        return """您好！我是企業資料收集助理。
+        # Check if user has existing data
+        existing_data = self.db.query(CompanyOnboarding).filter(
+            CompanyOnboarding.user_id == self.user_id,
+            CompanyOnboarding.is_current == True
+        ).first()
+
+        if existing_data and existing_data.industry:
+            # User has existing data
+            return f"""您好！歡迎回來！我看到您之前已經填寫過資料了。
+
+📊 目前資料概況：
+- 產業別：{existing_data.industry or '未填寫'}
+- 資本額：{existing_data.capital_amount or '未填寫'}
+- 發明專利：{existing_data.invention_patent_count if existing_data.invention_patent_count is not None else '未填寫'}件
+- 產品數量：{len(existing_data.products)}項
+
+請問您想要：
+
+1️⃣ 更新資料 - 修改或補充現有資料
+2️⃣ 新增產品 - 新增更多產品資訊
+3️⃣ 上傳文件 - 上傳文件來更新資訊
+4️⃣ 查看完整資料 - 查看所有已填寫的資料
+5️⃣ 重新開始 - 清空資料重新填寫
+
+請輸入數字（1-5）或直接說明您的需求。"""
+        else:
+            # New user or no data
+            return """您好！我是企業資料收集助理。
 
 請問您想要進行以下哪項操作？
 
@@ -314,11 +359,31 @@ class AIChatbotHandler:
             return False
 
     def add_product(self, product_data: Dict[str, Any]) -> Optional[Product]:
-        """Add a product to the onboarding data"""
+        """Add a product to the onboarding data with duplicate checking"""
         try:
+            # Check for duplicate product_id in current onboarding
+            product_id = product_data.get("product_id")
+            if product_id:
+                existing_product = self.db.query(Product).filter(
+                    Product.onboarding_id == self.onboarding_data.id,
+                    Product.product_id == product_id
+                ).first()
+
+                if existing_product:
+                    # Update existing product instead of creating duplicate
+                    existing_product.product_name = product_data.get("product_name") or existing_product.product_name
+                    existing_product.price = product_data.get("price") or existing_product.price
+                    existing_product.main_raw_materials = product_data.get("main_raw_materials") or existing_product.main_raw_materials
+                    existing_product.product_standard = product_data.get("product_standard") or existing_product.product_standard
+                    existing_product.technical_advantages = product_data.get("technical_advantages") or existing_product.technical_advantages
+                    self.db.commit()
+                    self.db.refresh(existing_product)
+                    return existing_product
+
+            # Create new product
             product = Product(
                 onboarding_id=self.onboarding_data.id,
-                product_id=product_data.get("product_id"),
+                product_id=product_id,
                 product_name=product_data.get("product_name"),
                 price=product_data.get("price"),
                 main_raw_materials=product_data.get("main_raw_materials"),

@@ -407,16 +407,11 @@ async def create_new_session_with_context(
     Requires: Authentication
     Returns: New session ID with pre-populated company info
     """
-    # Find the most recent session with company data (completed or active)
-    latest_session = db.query(ChatSession).filter(
-        ChatSession.user_id == current_user.id
-    ).order_by(ChatSession.created_at.desc()).first()
-
-    latest_company_data = None
-    if latest_session:
-        latest_company_data = db.query(CompanyOnboarding).filter(
-            CompanyOnboarding.chat_session_id == latest_session.id
-        ).first()
+    # Find the current company data (marked as is_current=True)
+    latest_company_data = db.query(CompanyOnboarding).filter(
+        CompanyOnboarding.user_id == current_user.id,
+        CompanyOnboarding.is_current == True
+    ).first()
 
     # Choose handler based on configuration
     settings = get_settings()
@@ -592,6 +587,34 @@ async def get_onboarding_data(
     return onboarding_data.to_dict()
 
 
+@app.get("/api/chatbot/data/current")
+async def get_current_company_data(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get the current (active) company onboarding data for the user
+
+    This returns the most recent onboarding data marked as is_current=True.
+    Returns null if user has no onboarding data yet.
+
+    Requires: Authentication
+    Returns: Current company data or null
+    """
+    current_data = db.query(CompanyOnboarding).filter(
+        CompanyOnboarding.user_id == current_user.id,
+        CompanyOnboarding.is_current == True
+    ).first()
+
+    if not current_data:
+        return {"has_data": False, "data": None}
+
+    return {
+        "has_data": True,
+        "data": current_data.to_dict()
+    }
+
+
 @app.get("/api/chatbot/export/{session_id}")
 async def export_onboarding_data(
     session_id: int,
@@ -636,20 +659,37 @@ async def export_onboarding_data(
 @app.get("/api/chatbot/export/all")
 async def export_all_onboarding_data(
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    include_history: bool = False
 ):
     """
-    Export all completed onboarding data for the current user
+    Export onboarding data for the current user
+
+    By default, exports only the current (active) record.
+    Set include_history=true to export all historical records.
 
     Requires: Authentication
-    Returns: Array of all user's completed onboarding data in Chinese field name format
+    Returns: Array of onboarding data in Chinese field name format
     """
-    # Get all completed sessions for user
-    completed_sessions = db.query(ChatSession).filter(
-        ChatSession.user_id == current_user.id,
-        ChatSession.status == ChatSessionStatus.COMPLETED
-    ).all()
+    if include_history:
+        # Get all completed sessions for user (historical data)
+        completed_sessions = db.query(ChatSession).filter(
+            ChatSession.user_id == current_user.id,
+            ChatSession.status == ChatSessionStatus.COMPLETED
+        ).all()
+    else:
+        # Get only current data
+        current_data = db.query(CompanyOnboarding).filter(
+            CompanyOnboarding.user_id == current_user.id,
+            CompanyOnboarding.is_current == True
+        ).first()
 
+        if not current_data:
+            return []
+
+        return [current_data.to_export_format()]
+
+    # Historical data export
     export_data = []
     for session in completed_sessions:
         onboarding_data = db.query(CompanyOnboarding).filter(

@@ -167,6 +167,8 @@ class CompanyOnboarding(Base):
     certification_count = Column(Integer, nullable=True)  # 公司認證資料數量
     esg_certification = Column(Boolean, nullable=True)  # ESG相關認證資料
 
+    is_current = Column(Boolean, default=True, nullable=False, index=True)  # Whether this is the current/active record for the user
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
