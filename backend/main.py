@@ -249,9 +249,17 @@ async def upload_file_for_extraction(
                     - 資本總額（以臺幣為單位）
                     - 發明專利數量
                     - 新型專利數量
-                    - 公司認證資料數量
-                    - ESG相關認證（是/否）
+                    - 公司認證資料數量（不包括ESG認證）
+                    - ESG相關認證資料數量
+                    - ESG相關認證列表（例如：ISO 14064, ISO 14067, ISO 14046）
                     - 產品資訊（產品ID、名稱、價格、原料、規格、技術優勢）
+
+                    重要：區分一般公司認證與ESG認證。ESG相關認證包括：
+                    - ISO 14064 (溫室氣體量化)
+                    - ISO 14067 (碳足跡)
+                    - ISO 14046 (水足跡)
+                    - GRI Standards (永續報告)
+                    - ISSB / IFRS S1, S2 (永續揭露)
 
                     以友善的方式總結找到的資訊，並告訴使用者已自動填入這些資料。
                     如果某些資訊未找到，禮貌地告知使用者可以稍後補充。"""
@@ -275,7 +283,8 @@ async def upload_file_for_extraction(
                                 "invention_patent_count": {"type": "integer"},
                                 "utility_patent_count": {"type": "integer"},
                                 "certification_count": {"type": "integer"},
-                                "esg_certification": {"type": "boolean"}
+                                "esg_certification_count": {"type": "integer"},
+                                "esg_certification": {"type": "string"}
                             }
                         }
                     }
