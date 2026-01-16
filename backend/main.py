@@ -477,13 +477,9 @@ async def create_new_session_with_context(
         else:
             welcome_message = (
                 "您好！我是企業導入 AI 助理 🤖\n\n"
-                "我將用智能對話的方式協助您建立公司資料。您可以用自然的方式告訴我：\n"
-                "• 產業別\n"
-                "• 資本總額與專利數量\n"
-                "• 認證資料（包括ESG認證）\n"
-                "• 產品資訊\n\n"
-                "您可以一次提供多個資訊，我會自動理解並記錄。\n"
-                "讓我們開始吧！請告訴我您的公司資料。"
+                "我將用對話的方式協助您逐步建立公司資料。\n\n"
+                "讓我們開始吧！請問貴公司所屬的產業別是什麼？\n"
+                "（例如：食品業、鋼鐵業、電子業等）"
             )
     else:
         if latest_company_data and latest_company_data.industry:
@@ -497,12 +493,9 @@ async def create_new_session_with_context(
         else:
             welcome_message = (
                 "您好！我是企業導入助理 👋\n\n"
-                "我將協助您建立公司資料。我會逐步引導您輸入以下資訊：\n"
-                "• 產業別\n"
-                "• 資本總額與專利數量\n"
-                "• 認證資料（包括ESG認證）\n"
-                "• 產品資訊\n\n"
-                "讓我們開始吧！請問您的公司所屬產業別是什麼？（例如：食品業、鋼鐵業、電子業等）"
+                "我將協助您逐步建立公司資料。\n\n"
+                "讓我們開始吧！請問您的公司所屬產業別是什麼？\n"
+                "（例如：食品業、鋼鐵業、電子業等）"
             )
 
     handler.add_message("assistant", welcome_message)
