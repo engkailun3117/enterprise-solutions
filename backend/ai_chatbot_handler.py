@@ -107,8 +107,8 @@ class AIChatbotHandler:
    - 資本總額（以臺幣為單位）
    - 發明專利數量（⚠️ 特別注意：發明專利和新型專利要分開詢問，避免混淆）
    - 新型專利數量（⚠️ 特別注意：發明專利和新型專利要分開詢問，避免混淆）
-   - 公司認證資料數量
-   - ESG相關認證（有/無）
+   - 公司認證資料數量（⚠️ 不包括ESG認證，ESG認證會分開詢問）
+   - ESG相關認證資料（請使用者列出所有ESG認證，例如：ISO 14064, ISO 14067）
 
 3. 收集產品資訊（可以有多個產品）：
    - 產品ID（⚠️ 必須是唯一的，例如：PROD001、PROD002）
@@ -124,6 +124,30 @@ class AIChatbotHandler:
 - 如果使用者一次提供多個資訊，只提取當前詢問的欄位，其他資訊提醒使用者稍後會詢問
 - 保持對話自然流暢，但堅持逐個收集資料
 - 你的責任範圍僅限於上述資料的收集
+
+🏆 **ESG認證 vs 公司認證的區分**：
+
+**ESG相關認證（環境、社會、治理）：**
+- ISO 14064（溫室氣體盤查）
+- ISO 14067（碳足跡）
+- ISO 14046（水足跡）
+- GRI Standards（永續報告）
+- ISSB / IFRS S1、S2（永續揭露）
+
+**公司認證（依產業分類）：**
+- 食品/農產/餐飲：HACCP, ISO 22000, FSSC 22000, GMP
+- 汽車零組件：IATF 16949, ISO 9001, ISO 14001
+- 電子/半導體：ISO 9001, ISO 14001, ISO 45001, IECQ QC 080000, RoHS, REACH
+- 一般製造業：ISO 9001, ISO 14001, ISO 45001
+- 生技/醫療：ISO 13485
+- 化工/材料：ISO 9001, ISO 14001, ISO 45001, ISO 50001
+- 物流/倉儲：ISO 9001, ISO 22000/HACCP, GDP, ISO 28000
+- 資訊服務：ISO 27001, ISO 27701, ISO 9001
+
+**詢問方式：**
+1. 先問「公司認證資料數量」（不包括ESG）
+2. 再問「請列出所有ESG相關認證」（例如：ISO 14064, ISO 14067）
+3. 幫助使用者分辨：如果使用者混淆，主動提醒哪些屬於ESG，哪些屬於公司認證
 
 🔄 **更新現有資料**：
 - 如果使用者說要「修改」、「更新」或「更正」某個資料，直接使用 update_onboarding_data 函數更新
@@ -197,9 +221,11 @@ class AIChatbotHandler:
         if self.onboarding_data.utility_patent_count is not None:
             data.append(f"新型專利: {self.onboarding_data.utility_patent_count}件")
         if self.onboarding_data.certification_count is not None:
-            data.append(f"認證資料: {self.onboarding_data.certification_count}份")
-        if self.onboarding_data.esg_certification is not None:
-            data.append(f"ESG認證: {'有' if self.onboarding_data.esg_certification else '無'}")
+            data.append(f"公司認證資料: {self.onboarding_data.certification_count}份")
+        if self.onboarding_data.esg_certification_count is not None:
+            data.append(f"ESG認證數量: {self.onboarding_data.esg_certification_count}份")
+        if self.onboarding_data.esg_certification:
+            data.append(f"ESG認證: {self.onboarding_data.esg_certification}")
 
         products_count = len(self.onboarding_data.products) if self.onboarding_data.products else 0
         if products_count > 0:
@@ -235,7 +261,7 @@ class AIChatbotHandler:
                 "type": "function",
                 "function": {
                     "name": "update_company_data",
-                    "description": "更新公司資料。從使用者的訊息中提取產業別、資本總額、專利數量、認證數量、ESG認證等資訊並更新。",
+                    "description": "更新公司資料。從使用者的訊息中提取產業別、資本總額、專利數量、公司認證數量、ESG認證等資訊並更新。",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -243,8 +269,9 @@ class AIChatbotHandler:
                             "capital_amount": {"type": "integer", "description": "資本總額（以臺幣為單位）"},
                             "invention_patent_count": {"type": "integer", "description": "發明專利數量"},
                             "utility_patent_count": {"type": "integer", "description": "新型專利數量"},
-                            "certification_count": {"type": "integer", "description": "公司認證資料數量"},
-                            "esg_certification": {"type": "boolean", "description": "是否有ESG相關認證"}
+                            "certification_count": {"type": "integer", "description": "公司認證資料數量（不包括ESG認證）"},
+                            "esg_certification_count": {"type": "integer", "description": "ESG相關認證資料數量"},
+                            "esg_certification": {"type": "string", "description": "ESG相關認證資料列表（例如：ISO 14064, ISO 14067, ISO 14046）"}
                         }
                     }
                 }
@@ -344,8 +371,12 @@ class AIChatbotHandler:
                 self.onboarding_data.certification_count = int(data["certification_count"])
                 updated = True
 
-            if "esg_certification" in data and data["esg_certification"] is not None:
-                self.onboarding_data.esg_certification = bool(data["esg_certification"])
+            if "esg_certification_count" in data and data["esg_certification_count"] is not None:
+                self.onboarding_data.esg_certification_count = int(data["esg_certification_count"])
+                updated = True
+
+            if "esg_certification" in data and data["esg_certification"]:
+                self.onboarding_data.esg_certification = str(data["esg_certification"])
                 updated = True
 
             if updated:
@@ -475,7 +506,7 @@ class AIChatbotHandler:
     def get_progress(self) -> Dict[str, Any]:
         """Get current progress of data collection"""
         fields_completed = 0
-        total_fields = 6  # Total number of company fields (excluding registration fields)
+        total_fields = 7  # Total number of company fields: industry, capital, 2 patents, certification, esg_count, esg_list
 
         # Only collect fields within chatbot's responsibility
         if self.onboarding_data.industry:
@@ -488,7 +519,9 @@ class AIChatbotHandler:
             fields_completed += 1
         if self.onboarding_data.certification_count is not None:
             fields_completed += 1
-        if self.onboarding_data.esg_certification is not None:
+        if self.onboarding_data.esg_certification_count is not None:
+            fields_completed += 1
+        if self.onboarding_data.esg_certification:
             fields_completed += 1
 
         return {

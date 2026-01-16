@@ -165,7 +165,8 @@ class CompanyOnboarding(Base):
     invention_patent_count = Column(Integer, nullable=True)  # 發明專利數量 - 權重高
     utility_patent_count = Column(Integer, nullable=True)  # 新型專利數量 - 權重低
     certification_count = Column(Integer, nullable=True)  # 公司認證資料數量
-    esg_certification = Column(Boolean, nullable=True)  # ESG相關認證資料
+    esg_certification_count = Column(Integer, nullable=True)  # ESG相關認證資料數量
+    esg_certification = Column(Text, nullable=True)  # ESG相關認證資料（例如：ISO 14064, ISO 14067, ISO 14046）
 
     is_current = Column(Boolean, default=True, nullable=False, index=True)  # Whether this is the current/active record for the user
 
@@ -188,6 +189,7 @@ class CompanyOnboarding(Base):
             "invention_patent_count": self.invention_patent_count,
             "utility_patent_count": self.utility_patent_count,
             "certification_count": self.certification_count,
+            "esg_certification_count": self.esg_certification_count,
             "esg_certification": self.esg_certification,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
@@ -202,7 +204,8 @@ class CompanyOnboarding(Base):
             "發明專利數量": self.invention_patent_count,
             "新型專利數量": self.utility_patent_count,
             "公司認證資料數量": self.certification_count,
-            "ESG相關認證資料": "有" if self.esg_certification else "無" if self.esg_certification is not None else None,
+            "ESG相關認證資料數量": self.esg_certification_count,
+            "ESG相關認證資料": self.esg_certification,
             "產品": [p.to_export_format() for p in self.products] if self.products else []
         }
 
