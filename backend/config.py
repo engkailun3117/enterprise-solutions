@@ -4,10 +4,15 @@ from functools import lru_cache
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
 
+    # Database Configuration (Supabase PostgreSQL)
     database_url: str
+
+    # API Configuration
     api_host: str = "0.0.0.0"
     api_port: int = 8000
-    secret_key: str = "your-secret-key-change-this-in-production-please-use-a-random-string"
+
+    # External JWT Authentication (from main system)
+    external_jwt_secret: str  # Shared secret key from main user system
 
     # OpenAI Configuration
     openai_api_key: str = ""

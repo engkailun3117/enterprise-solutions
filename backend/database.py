@@ -5,7 +5,7 @@ from config import get_settings
 
 settings = get_settings()
 
-# Create SQLAlchemy engine for Neon database
+# Create SQLAlchemy engine for Supabase PostgreSQL database
 engine = create_engine(
     settings.database_url,
     pool_pre_ping=True,

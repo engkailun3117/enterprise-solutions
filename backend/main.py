@@ -1,26 +1,21 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 
 from database import get_db, engine, Base
-from models import CompanyInfo, User, UserRole, ApplicationStatus, ChatSession, ChatMessage, CompanyOnboarding, Product, ChatSessionStatus
+from models import User, ChatSession, ChatMessage, CompanyOnboarding, Product, ChatSessionStatus
 from schemas import (
-    CompanyInfoCreate, CompanyInfoResponse,
-    UserRegister, UserLogin, TokenResponse, UserResponse, ReviewAction,
-    PasswordResetRequest, PasswordResetConfirm,
+    UserResponse,
     ChatMessageCreate, ChatResponse, ChatSessionResponse, ChatMessageResponse,
     OnboardingDataResponse
 )
 from config import get_settings
-from auth import (
-    get_password_hash, authenticate_user, create_access_token,
-    get_current_active_user, require_admin
-)
+from auth import get_current_active_user
 from chatbot_handler import ChatbotHandler
 from ai_chatbot_handler import AIChatbotHandler
+from file_processor import FileProcessor
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -32,14 +27,15 @@ print("🔧 Backend Configuration:")
 print(f"   Database: {settings.database_url[:30]}...")
 print(f"   API Host: {settings.api_host}")
 print(f"   API Port: {settings.api_port}")
-print(f"   SECRET_KEY: {settings.secret_key[:20]}... (length: {len(settings.secret_key)})")
+print(f"   External JWT Secret: {settings.external_jwt_secret[:20]}... (length: {len(settings.external_jwt_secret)})")
+print(f"   AI Chatbot: {'Enabled' if settings.use_ai_chatbot else 'Disabled'}")
 print("=" * 60)
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Supplier Onboarding API",
-    description="API for managing supplier company information with authentication and approval workflow",
-    version="2.0.0"
+    title="Enterprise AI Chatbot API",
+    description="AI-powered chatbot for collecting company onboarding information via conversational interface",
+    version="3.0.0"
 )
 
 # Configure CORS
@@ -59,105 +55,13 @@ async def root():
     """Health check endpoint"""
     return {
         "status": "ok",
-        "message": "Supplier Onboarding API is running",
-        "version": "2.0.0",
-        "features": ["authentication", "authorization", "approval_workflow"]
+        "message": "Enterprise AI Chatbot API is running",
+        "version": "3.0.0",
+        "features": ["external_jwt_auth", "ai_chatbot", "data_collection", "session_management"]
     }
 
 
 # ============== Authentication Endpoints ==============
-
-@app.post("/api/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def register(
-    user_data: UserRegister,
-    db: Session = Depends(get_db)
-):
-    """
-    Register a new user account
-
-    - **username**: Unique username (3-50 characters)
-    - **email**: Unique email address
-    - **password**: Password (minimum 6 characters)
-
-    Returns JWT token and user information
-    """
-    # Check if username already exists
-    existing_user = db.query(User).filter(User.username == user_data.username).first()
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered"
-        )
-
-    # Check if email already exists
-    existing_email = db.query(User).filter(User.email == user_data.email).first()
-    if existing_email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-
-    try:
-        # Create new user
-        hashed_password = get_password_hash(user_data.password)
-        new_user = User(
-            username=user_data.username,
-            email=user_data.email,
-            hashed_password=hashed_password,
-            role=UserRole.USER  # Default role
-        )
-
-        db.add(new_user)
-        db.commit()
-        db.refresh(new_user)
-
-        # Create access token
-        access_token = create_access_token(data={"sub": str(new_user.id)})
-
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user": new_user.to_dict()
-        }
-
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred during registration: {str(e)}"
-        )
-
-
-@app.post("/api/auth/login", response_model=TokenResponse)
-async def login(
-    credentials: UserLogin,
-    db: Session = Depends(get_db)
-):
-    """
-    Login with username and password
-
-    - **username**: Your username
-    - **password**: Your password
-
-    Returns JWT token and user information
-    """
-    user = authenticate_user(db, credentials.username, credentials.password)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Create access token
-    access_token = create_access_token(data={"sub": str(user.id)})
-
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": user.to_dict()
-    }
-
 
 @app.get("/api/auth/me", response_model=UserResponse)
 async def get_current_user_info(
@@ -166,331 +70,12 @@ async def get_current_user_info(
     """
     Get current authenticated user information
 
-    Requires: Valid JWT token in Authorization header
+    Requires: Valid JWT token from main system in Authorization header
+
+    This endpoint automatically syncs user data from the JWT token to the local database.
+    If the user doesn't exist locally, it will be created automatically.
     """
     return current_user.to_dict()
-
-
-@app.post("/api/auth/forgot-password", status_code=status.HTTP_200_OK)
-async def request_password_reset(
-    request: PasswordResetRequest,
-    db: Session = Depends(get_db)
-):
-    """
-    Request a password reset email
-
-    - **email**: Email address of the user
-
-    Sends a password reset link to the user's email (if account exists)
-    Always returns success to prevent email enumeration
-    """
-    # Find user by email
-    user = db.query(User).filter(User.email == request.email).first()
-
-    if user:
-        # In a real application, you would:
-        # 1. Generate a secure reset token
-        # 2. Store it in database with expiration time
-        # 3. Send email with reset link containing the token
-        # For now, we'll just simulate success
-        pass
-
-    # Always return success to prevent email enumeration
-    return {
-        "message": "If the email exists, a password reset link has been sent",
-        "email": request.email
-    }
-
-
-@app.post("/api/auth/reset-password", status_code=status.HTTP_200_OK)
-async def reset_password(
-    request: PasswordResetConfirm,
-    db: Session = Depends(get_db)
-):
-    """
-    Reset password using a reset token
-
-    - **token**: Password reset token
-    - **new_password**: New password (minimum 6 characters)
-
-    Resets the user's password if the token is valid
-    """
-    # In a real application, you would:
-    # 1. Verify the reset token
-    # 2. Check if it's not expired
-    # 3. Find the associated user
-    # 4. Update the password
-    # For now, this is a placeholder that returns success
-
-    return {
-        "message": "Password has been reset successfully"
-    }
-
-
-# ============== User Endpoints ==============
-
-@app.get("/api/users/me", response_model=UserResponse)
-async def get_user_profile(
-    current_user: User = Depends(get_current_active_user)
-):
-    """
-    Get current user profile
-
-    Requires: Valid JWT token in Authorization header
-    Returns: Current user information
-    """
-    return current_user.to_dict()
-
-
-# ============== Company/Supplier Onboarding Endpoints ==============
-
-@app.post("/api/companies", response_model=CompanyInfoResponse, status_code=status.HTTP_201_CREATED)
-async def create_company(
-    company: CompanyInfoCreate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Create a new supplier onboarding application (ONE TIME ONLY per user)
-
-    - **company_id**: 統一編號 (Unified Business Number) - must be unique
-    - **company_name**: 企業名稱 (Company Name)
-    - **company_head**: 負責人 (Person in Charge)
-    - **company_email**: 聯絡 Email
-    - **company_link**: 公司網址 (Company Website) - optional
-
-    Requires: Authentication
-    Restriction: Each user can only submit ONE application
-    """
-    # Check if user already submitted an application
-    existing_application = db.query(CompanyInfo).filter(
-        CompanyInfo.user_id == current_user.id
-    ).first()
-
-    if existing_application:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You have already submitted a supplier onboarding application. Only one application per user is allowed."
-        )
-
-    try:
-        # Create new company record linked to user
-        db_company = CompanyInfo(
-            Company_ID=company.company_id,
-            Company_Name=company.company_name,
-            Company_Head=company.company_head,
-            Company_Email=company.company_email,
-            Company_Link=company.company_link,
-            user_id=current_user.id,
-            status=ApplicationStatus.PENDING  # Default status
-        )
-
-        db.add(db_company)
-        db.commit()
-        db.refresh(db_company)
-
-        return db_company.to_dict()
-
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Company with ID {company.company_id} already exists"
-        )
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while creating the company: {str(e)}"
-        )
-
-
-@app.get("/api/companies/my-application", response_model=CompanyInfoResponse)
-async def get_my_application(
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Get the current user's supplier onboarding application
-
-    Requires: Authentication
-    Returns: User's application or 404 if not found
-    """
-    application = db.query(CompanyInfo).filter(
-        CompanyInfo.user_id == current_user.id
-    ).first()
-
-    if not application:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="You have not submitted a supplier onboarding application yet"
-        )
-
-    return application.to_dict()
-
-
-@app.get("/api/companies/{company_id}", response_model=CompanyInfoResponse)
-async def get_company(
-    company_id: str,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Retrieve a specific company by ID
-
-    - **company_id**: 統一編號 (Unified Business Number)
-
-    Requires: Authentication
-    Authorization: Admins can view any application, users can only view their own
-    """
-    company = db.query(CompanyInfo).filter(CompanyInfo.Company_ID == company_id).first()
-
-    if not company:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Company with ID {company_id} not found"
-        )
-
-    # Authorization check: users can only view their own application
-    if current_user.role != UserRole.ADMIN and company.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to view this application"
-        )
-
-    return company.to_dict()
-
-
-# ============== Admin Endpoints ==============
-
-@app.get("/api/admin/applications", response_model=List[CompanyInfoResponse])
-async def get_all_applications(
-    skip: int = 0,
-    limit: int = 100,
-    status_filter: str = None,
-    current_user: User = Depends(require_admin),
-    db: Session = Depends(get_db)
-):
-    """
-    Retrieve all supplier applications with pagination (ADMIN ONLY)
-
-    - **skip**: Number of records to skip (default: 0)
-    - **limit**: Maximum number of records to return (default: 100)
-    - **status_filter**: Filter by status (pending, approved, rejected) - optional
-
-    Requires: Admin role
-    """
-    query = db.query(CompanyInfo)
-
-    # Apply status filter if provided
-    if status_filter:
-        try:
-            status_enum = ApplicationStatus(status_filter.lower())
-            query = query.filter(CompanyInfo.status == status_enum)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid status filter. Must be one of: pending, approved, rejected"
-            )
-
-    applications = query.offset(skip).limit(limit).all()
-    return [app.to_dict() for app in applications]
-
-
-@app.put("/api/admin/applications/{company_id}/review", response_model=CompanyInfoResponse)
-async def review_application(
-    company_id: str,
-    review: ReviewAction,
-    current_user: User = Depends(require_admin),
-    db: Session = Depends(get_db)
-):
-    """
-    Approve or reject a supplier application (ADMIN ONLY)
-
-    - **company_id**: 統一編號 (Unified Business Number)
-    - **action**: "approve" or "reject"
-    - **rejection_reason**: Required if action is "reject"
-
-    Requires: Admin role
-    """
-    # Validate action
-    if review.action not in ["approve", "reject"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Action must be either 'approve' or 'reject'"
-        )
-
-    # Validate rejection reason
-    if review.action == "reject" and not review.rejection_reason:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Rejection reason is required when rejecting an application"
-        )
-
-    # Find the application
-    application = db.query(CompanyInfo).filter(CompanyInfo.Company_ID == company_id).first()
-
-    if not application:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Application with ID {company_id} not found"
-        )
-
-    # Check if already reviewed
-    if application.status != ApplicationStatus.PENDING:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Application has already been {application.status.value}"
-        )
-
-    try:
-        # Update application status
-        if review.action == "approve":
-            application.status = ApplicationStatus.APPROVED
-            application.rejection_reason = None
-        else:
-            application.status = ApplicationStatus.REJECTED
-            application.rejection_reason = review.rejection_reason
-
-        application.reviewed_by = current_user.id
-        application.reviewed_at = datetime.utcnow()
-
-        db.commit()
-        db.refresh(application)
-
-        return application.to_dict()
-
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while reviewing the application: {str(e)}"
-        )
-
-
-@app.get("/api/admin/stats")
-async def get_admin_stats(
-    current_user: User = Depends(require_admin),
-    db: Session = Depends(get_db)
-):
-    """
-    Get statistics about applications (ADMIN ONLY)
-
-    Returns counts of applications by status
-
-    Requires: Admin role
-    """
-    total = db.query(CompanyInfo).count()
-    pending = db.query(CompanyInfo).filter(CompanyInfo.status == ApplicationStatus.PENDING).count()
-    approved = db.query(CompanyInfo).filter(CompanyInfo.status == ApplicationStatus.APPROVED).count()
-    rejected = db.query(CompanyInfo).filter(CompanyInfo.status == ApplicationStatus.REJECTED).count()
-
-    return {
-        "total_applications": total,
-        "pending": pending,
-        "approved": approved,
-        "rejected": rejected
-    }
 
 
 # ============== Chatbot Endpoints ==============
@@ -580,6 +165,185 @@ async def send_chatbot_message(
         )
 
 
+@app.post("/api/chatbot/upload-file")
+async def upload_file_for_extraction(
+    file: UploadFile = File(...),
+    session_id: Optional[int] = Form(None),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Upload a file (PDF, DOCX, Image) and extract company information using AI
+
+    - **file**: File to upload (PDF, DOCX, JPG, PNG, TXT)
+    - **session_id**: Optional session ID to add extracted data to existing session
+
+    Requires: Authentication
+    Returns: Extracted text and AI-processed company information
+
+    Supported file types:
+    - PDF documents (.pdf)
+    - Word documents (.docx)
+    - Images (.jpg, .png) - with OCR or AI Vision
+    - Text files (.txt)
+
+    Maximum file size: 10MB
+    """
+    try:
+        # Read file content
+        file_content = await file.read()
+
+        # Initialize file processor
+        processor = FileProcessor()
+
+        # Check file type
+        content_type = file.content_type
+        if not processor.is_supported(content_type):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported file type: {content_type}. Supported: PDF, DOCX, JPG, PNG, TXT"
+            )
+
+        # Process file and extract text
+        result = processor.process_file(file_content, file.filename, content_type)
+
+        if not result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result["error"]
+            )
+
+        extracted_text = result["extracted_text"]
+
+        # Use AI to extract structured data from text
+        settings = get_settings()
+        if not settings.use_ai_chatbot or not settings.openai_api_key:
+            # Return raw extracted text if AI is not available
+            return {
+                "success": True,
+                "filename": file.filename,
+                "extracted_text": extracted_text,
+                "message": "文件已成功處理。請將提取的文字發送給聊天機器人進行處理。",
+                "ai_available": False
+            }
+
+        # Initialize AI handler
+        handler = AIChatbotHandler(db, current_user.id, session_id)
+
+        # Create session if needed
+        if not handler.session:
+            handler.create_session()
+            session_id = handler.session.id
+
+        # Use AI to extract structured company information
+        from openai import OpenAI
+        client = OpenAI(api_key=settings.openai_api_key)
+
+        ai_response = client.chat.completions.create(
+            model=settings.openai_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": """你是一個資料提取專家。從提供的文件內容中提取以下公司資訊（如果存在）：
+                    - 產業別
+                    - 資本總額（以臺幣為單位）
+                    - 發明專利數量
+                    - 新型專利數量
+                    - 公司認證資料數量
+                    - ESG相關認證（是/否）
+                    - 產品資訊（產品ID、名稱、價格、原料、規格、技術優勢）
+
+                    以友善的方式總結找到的資訊，並告訴使用者已自動填入這些資料。
+                    如果某些資訊未找到，禮貌地告知使用者可以稍後補充。"""
+                },
+                {
+                    "role": "user",
+                    "content": f"從以下文件內容中提取公司資訊：\n\n{extracted_text[:4000]}"  # Limit to 4000 chars
+                }
+            ],
+            tools=[
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "update_company_data",
+                        "description": "更新公司資料",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "industry": {"type": "string"},
+                                "capital_amount": {"type": "integer"},
+                                "invention_patent_count": {"type": "integer"},
+                                "utility_patent_count": {"type": "integer"},
+                                "certification_count": {"type": "integer"},
+                                "esg_certification": {"type": "boolean"}
+                            }
+                        }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "add_product",
+                        "description": "新增產品資訊",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "product_id": {"type": "string"},
+                                "product_name": {"type": "string"},
+                                "price": {"type": "string"},
+                                "main_raw_materials": {"type": "string"},
+                                "product_standard": {"type": "string"},
+                                "technical_advantages": {"type": "string"}
+                            },
+                            "required": ["product_name"]
+                        }
+                    }
+                }
+            ],
+            tool_choice="auto"
+        )
+
+        # Process AI response and update database
+        ai_message = ai_response.choices[0].message.content or "已處理文件並提取資訊。"
+        data_updated = False
+        products_added = 0
+
+        if ai_response.choices[0].message.tool_calls:
+            import json
+            for tool_call in ai_response.choices[0].message.tool_calls:
+                function_name = tool_call.function.name
+                function_args = json.loads(tool_call.function.arguments)
+
+                if function_name == "update_company_data":
+                    if handler.update_onboarding_data(function_args):
+                        data_updated = True
+                elif function_name == "add_product":
+                    if handler.add_product(function_args):
+                        products_added += 1
+
+        # Save the AI message to conversation history
+        handler.add_message("assistant", f"📄 已處理文件：{file.filename}\n\n{ai_message}")
+
+        return {
+            "success": True,
+            "filename": file.filename,
+            "session_id": session_id,
+            "message": ai_message,
+            "extracted_text_length": len(extracted_text),
+            "data_updated": data_updated,
+            "products_added": products_added,
+            "progress": handler.get_progress()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error processing file: {str(e)}"
+        )
+
+
 @app.get("/api/chatbot/sessions", response_model=List[ChatSessionResponse])
 async def get_user_chat_sessions(
     current_user: User = Depends(get_current_active_user),
@@ -643,16 +407,11 @@ async def create_new_session_with_context(
     Requires: Authentication
     Returns: New session ID with pre-populated company info
     """
-    # Find the most recent session with company data (completed or active)
-    latest_session = db.query(ChatSession).filter(
-        ChatSession.user_id == current_user.id
-    ).order_by(ChatSession.created_at.desc()).first()
-
-    latest_company_data = None
-    if latest_session:
-        latest_company_data = db.query(CompanyOnboarding).filter(
-            CompanyOnboarding.chat_session_id == latest_session.id
-        ).first()
+    # Find the current company data (marked as is_current=True)
+    latest_company_data = db.query(CompanyOnboarding).filter(
+        CompanyOnboarding.user_id == current_user.id,
+        CompanyOnboarding.is_current == True
+    ).first()
 
     # Choose handler based on configuration
     settings = get_settings()
@@ -718,13 +477,9 @@ async def create_new_session_with_context(
         else:
             welcome_message = (
                 "您好！我是企業導入 AI 助理 🤖\n\n"
-                "我將用智能對話的方式協助您建立公司資料。您可以用自然的方式告訴我：\n"
-                "• 產業別\n"
-                "• 資本總額與專利數量\n"
-                "• 認證資料（包括ESG認證）\n"
-                "• 產品資訊\n\n"
-                "您可以一次提供多個資訊，我會自動理解並記錄。\n"
-                "讓我們開始吧！請告訴我您的公司資料。"
+                "我將用對話的方式協助您逐步建立公司資料。\n\n"
+                "讓我們開始吧！請問貴公司所屬的產業別是什麼？\n"
+                "（例如：食品業、鋼鐵業、電子業等）"
             )
     else:
         if latest_company_data and latest_company_data.industry:
@@ -738,12 +493,9 @@ async def create_new_session_with_context(
         else:
             welcome_message = (
                 "您好！我是企業導入助理 👋\n\n"
-                "我將協助您建立公司資料。我會逐步引導您輸入以下資訊：\n"
-                "• 產業別\n"
-                "• 資本總額與專利數量\n"
-                "• 認證資料（包括ESG認證）\n"
-                "• 產品資訊\n\n"
-                "讓我們開始吧！請問您的公司所屬產業別是什麼？（例如：食品業、鋼鐵業、電子業等）"
+                "我將協助您逐步建立公司資料。\n\n"
+                "讓我們開始吧！請問您的公司所屬產業別是什麼？\n"
+                "（例如：食品業、鋼鐵業、電子業等）"
             )
 
     handler.add_message("assistant", welcome_message)
@@ -828,6 +580,34 @@ async def get_onboarding_data(
     return onboarding_data.to_dict()
 
 
+@app.get("/api/chatbot/data/current")
+async def get_current_company_data(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get the current (active) company onboarding data for the user
+
+    This returns the most recent onboarding data marked as is_current=True.
+    Returns null if user has no onboarding data yet.
+
+    Requires: Authentication
+    Returns: Current company data or null
+    """
+    current_data = db.query(CompanyOnboarding).filter(
+        CompanyOnboarding.user_id == current_user.id,
+        CompanyOnboarding.is_current == True
+    ).first()
+
+    if not current_data:
+        return {"has_data": False, "data": None}
+
+    return {
+        "has_data": True,
+        "data": current_data.to_dict()
+    }
+
+
 @app.get("/api/chatbot/export/{session_id}")
 async def export_onboarding_data(
     session_id: int,
@@ -872,20 +652,37 @@ async def export_onboarding_data(
 @app.get("/api/chatbot/export/all")
 async def export_all_onboarding_data(
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    include_history: bool = False
 ):
     """
-    Export all completed onboarding data for the current user
+    Export onboarding data for the current user
+
+    By default, exports only the current (active) record.
+    Set include_history=true to export all historical records.
 
     Requires: Authentication
-    Returns: Array of all user's completed onboarding data in Chinese field name format
+    Returns: Array of onboarding data in Chinese field name format
     """
-    # Get all completed sessions for user
-    completed_sessions = db.query(ChatSession).filter(
-        ChatSession.user_id == current_user.id,
-        ChatSession.status == ChatSessionStatus.COMPLETED
-    ).all()
+    if include_history:
+        # Get all completed sessions for user (historical data)
+        completed_sessions = db.query(ChatSession).filter(
+            ChatSession.user_id == current_user.id,
+            ChatSession.status == ChatSessionStatus.COMPLETED
+        ).all()
+    else:
+        # Get only current data
+        current_data = db.query(CompanyOnboarding).filter(
+            CompanyOnboarding.user_id == current_user.id,
+            CompanyOnboarding.is_current == True
+        ).first()
 
+        if not current_data:
+            return []
+
+        return [current_data.to_export_format()]
+
+    # Historical data export
     export_data = []
     for session in completed_sessions:
         onboarding_data = db.query(CompanyOnboarding).filter(

@@ -57,10 +57,18 @@ class AIChatbotHandler:
         self.db.commit()
         self.db.refresh(self.session)
 
-        # Create empty onboarding data
+        # Mark all previous records as not current
+        self.db.query(CompanyOnboarding).filter(
+            CompanyOnboarding.user_id == self.user_id,
+            CompanyOnboarding.is_current == True
+        ).update({"is_current": False})
+        self.db.commit()
+
+        # Create new onboarding data marked as current
         self.onboarding_data = CompanyOnboarding(
             chat_session_id=self.session.id,
-            user_id=self.user_id
+            user_id=self.user_id,
+            is_current=True
         )
         self.db.add(self.onboarding_data)
         self.db.commit()
@@ -99,11 +107,11 @@ class AIChatbotHandler:
    - 資本總額（以臺幣為單位）
    - 發明專利數量（⚠️ 特別注意：發明專利和新型專利要分開詢問，避免混淆）
    - 新型專利數量（⚠️ 特別注意：發明專利和新型專利要分開詢問，避免混淆）
-   - 公司認證資料數量
-   - ESG相關認證（有/無）
+   - 公司認證資料數量（⚠️ 不包括ESG認證，ESG認證會分開詢問）
+   - ESG相關認證資料（請使用者列出所有ESG認證，例如：ISO 14064, ISO 14067）
 
 3. 收集產品資訊（可以有多個產品）：
-   - 產品ID
+   - 產品ID（⚠️ 必須是唯一的，例如：PROD001、PROD002）
    - 產品名稱
    - 價格
    - 主要原料
@@ -111,23 +119,87 @@ class AIChatbotHandler:
    - 技術優勢
 
 重要提示：
-- **必須一次只詢問一個問題**，等待使用者回答後再詢問下一個
+- **一次詢問一個欄位**，等待使用者回答後再詢問下一個
+- **如果使用者主動提供多個資訊**，全部提取並記錄，然後詢問下一個未填寫的欄位（不要重複詢問已提供的）
 - **發明專利和新型專利必須分開詢問**，避免使用者混淆這兩種專利類型
-- 如果使用者一次提供多個資訊，只提取當前詢問的欄位，其他資訊提醒使用者稍後會詢問
-- 保持對話自然流暢，但堅持逐個收集資料
-- 你的責任範圍僅限於上述資料的收集"""
+- 保持對話自然流暢，按順序逐個收集資料
+- 你的責任範圍僅限於上述資料的收集
+
+🏆 **ESG認證 vs 公司認證的區分**：
+
+**ESG相關認證（環境、社會、治理）：**
+- ISO 14064（溫室氣體盤查）
+- ISO 14067（碳足跡）
+- ISO 14046（水足跡）
+- GRI Standards（永續報告）
+- ISSB / IFRS S1、S2（永續揭露）
+
+**公司認證（依產業分類）：**
+- 食品/農產/餐飲：HACCP, ISO 22000, FSSC 22000, GMP
+- 汽車零組件：IATF 16949, ISO 9001, ISO 14001
+- 電子/半導體：ISO 9001, ISO 14001, ISO 45001, IECQ QC 080000, RoHS, REACH
+- 一般製造業：ISO 9001, ISO 14001, ISO 45001
+- 生技/醫療：ISO 13485
+- 化工/材料：ISO 9001, ISO 14001, ISO 45001, ISO 50001
+- 物流/倉儲：ISO 9001, ISO 22000/HACCP, GDP, ISO 28000
+- 資訊服務：ISO 27001, ISO 27701, ISO 9001
+
+**詢問方式：**
+1. 先問「公司認證資料數量」（不包括ESG）
+2. 再問「請列出所有ESG相關認證」（例如：ISO 14064, ISO 14067）
+3. 幫助使用者分辨：如果使用者混淆，主動提醒哪些屬於ESG，哪些屬於公司認證
+
+🔄 **更新現有資料**：
+- 如果使用者說要「修改」、「更新」或「更正」某個資料，直接使用 update_onboarding_data 函數更新
+- 使用者可以隨時修改已填寫的任何欄位
+- 更新後要確認：「已更新 [欄位名稱] 為 [新值]」
+
+📝 **產品ID指引**：
+- 收集產品資訊時，先詢問「請提供產品ID（例如：PROD001、SKU-001等）」
+- 強調產品ID必須是唯一的識別碼
+- 如果使用者不清楚，建議格式：「PROD001」、「PROD002」等
+
+📎 **文件上傳功能**：
+- 系統支援文件上傳功能（PDF、Word、圖片、TXT），可自動提取公司資料
+- 當使用者詢問是否能上傳文件時，告訴他們**可以上傳**，並鼓勵使用此功能
+- 文件會由系統自動處理，提取後的資料會自動填入相應欄位
+- 如果使用者想要上傳文件，請引導他們使用上傳功能來快速完成資料收集"""
 
     def get_initial_greeting(self) -> str:
         """Get the initial greeting with menu options"""
-        return """您好！我是企業資料收集助理。
+        # Check if user has existing data
+        existing_data = self.db.query(CompanyOnboarding).filter(
+            CompanyOnboarding.user_id == self.user_id,
+            CompanyOnboarding.is_current == True
+        ).first()
 
-請問您想要進行以下哪項操作？
+        if existing_data and existing_data.industry:
+            # User has existing data
+            return f"""您好！歡迎回來！我看到您之前已經填寫過資料了。
 
-1️⃣ 填寫資料 - 開始收集公司和產品資料
-2️⃣ 查看進度 - 了解目前資料填寫的進度如何
-3️⃣ 查看已填資料 - 查看目前已經填寫的資料內容
+📊 目前資料概況：
+- 產業別：{existing_data.industry or '未填寫'}
+- 資本額：{existing_data.capital_amount or '未填寫'}
+- 發明專利：{existing_data.invention_patent_count if existing_data.invention_patent_count is not None else '未填寫'}件
+- 產品數量：{len(existing_data.products)}項
 
-請輸入數字（1、2 或 3）或直接說明您的需求。"""
+請問您想要：
+
+1️⃣ 更新資料 - 修改或補充現有資料
+2️⃣ 新增產品 - 新增更多產品資訊
+3️⃣ 上傳文件 - 上傳文件來更新資訊
+4️⃣ 查看完整資料 - 查看所有已填寫的資料
+5️⃣ 重新開始 - 清空資料重新填寫
+
+請輸入數字（1-5）或直接說明您的需求。"""
+        else:
+            # New user or no data
+            return """您好！我是企業導入 AI 助理 🤖
+
+我將用對話的方式協助您逐步建立公司資料。
+
+讓我們開始吧！請問貴公司所屬的產業別是什麼？
+（例如：食品業、鋼鐵業、電子業等）"""
 
     def get_current_data_summary(self) -> str:
         """Get a summary of currently collected data"""
@@ -145,9 +217,11 @@ class AIChatbotHandler:
         if self.onboarding_data.utility_patent_count is not None:
             data.append(f"新型專利: {self.onboarding_data.utility_patent_count}件")
         if self.onboarding_data.certification_count is not None:
-            data.append(f"認證資料: {self.onboarding_data.certification_count}份")
-        if self.onboarding_data.esg_certification is not None:
-            data.append(f"ESG認證: {'有' if self.onboarding_data.esg_certification else '無'}")
+            data.append(f"公司認證資料: {self.onboarding_data.certification_count}份")
+        if self.onboarding_data.esg_certification_count is not None:
+            data.append(f"ESG認證數量: {self.onboarding_data.esg_certification_count}份")
+        if self.onboarding_data.esg_certification:
+            data.append(f"ESG認證: {self.onboarding_data.esg_certification}")
 
         products_count = len(self.onboarding_data.products) if self.onboarding_data.products else 0
         if products_count > 0:
@@ -183,7 +257,7 @@ class AIChatbotHandler:
                 "type": "function",
                 "function": {
                     "name": "update_company_data",
-                    "description": "更新公司資料。從使用者的訊息中提取產業別、資本總額、專利數量、認證數量、ESG認證等資訊並更新。",
+                    "description": "更新公司資料。從使用者的訊息中提取產業別、資本總額、專利數量、公司認證數量、ESG認證等資訊並更新。",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -191,8 +265,9 @@ class AIChatbotHandler:
                             "capital_amount": {"type": "integer", "description": "資本總額（以臺幣為單位）"},
                             "invention_patent_count": {"type": "integer", "description": "發明專利數量"},
                             "utility_patent_count": {"type": "integer", "description": "新型專利數量"},
-                            "certification_count": {"type": "integer", "description": "公司認證資料數量"},
-                            "esg_certification": {"type": "boolean", "description": "是否有ESG相關認證"}
+                            "certification_count": {"type": "integer", "description": "公司認證資料數量（不包括ESG認證）"},
+                            "esg_certification_count": {"type": "integer", "description": "ESG相關認證資料數量"},
+                            "esg_certification": {"type": "string", "description": "ESG相關認證資料列表（例如：ISO 14064, ISO 14067, ISO 14046）"}
                         }
                     }
                 }
@@ -292,8 +367,12 @@ class AIChatbotHandler:
                 self.onboarding_data.certification_count = int(data["certification_count"])
                 updated = True
 
-            if "esg_certification" in data and data["esg_certification"] is not None:
-                self.onboarding_data.esg_certification = bool(data["esg_certification"])
+            if "esg_certification_count" in data and data["esg_certification_count"] is not None:
+                self.onboarding_data.esg_certification_count = int(data["esg_certification_count"])
+                updated = True
+
+            if "esg_certification" in data and data["esg_certification"]:
+                self.onboarding_data.esg_certification = str(data["esg_certification"])
                 updated = True
 
             if updated:
@@ -307,11 +386,31 @@ class AIChatbotHandler:
             return False
 
     def add_product(self, product_data: Dict[str, Any]) -> Optional[Product]:
-        """Add a product to the onboarding data"""
+        """Add a product to the onboarding data with duplicate checking"""
         try:
+            # Check for duplicate product_id in current onboarding
+            product_id = product_data.get("product_id")
+            if product_id:
+                existing_product = self.db.query(Product).filter(
+                    Product.onboarding_id == self.onboarding_data.id,
+                    Product.product_id == product_id
+                ).first()
+
+                if existing_product:
+                    # Update existing product instead of creating duplicate
+                    existing_product.product_name = product_data.get("product_name") or existing_product.product_name
+                    existing_product.price = product_data.get("price") or existing_product.price
+                    existing_product.main_raw_materials = product_data.get("main_raw_materials") or existing_product.main_raw_materials
+                    existing_product.product_standard = product_data.get("product_standard") or existing_product.product_standard
+                    existing_product.technical_advantages = product_data.get("technical_advantages") or existing_product.technical_advantages
+                    self.db.commit()
+                    self.db.refresh(existing_product)
+                    return existing_product
+
+            # Create new product
             product = Product(
                 onboarding_id=self.onboarding_data.id,
-                product_id=product_data.get("product_id"),
+                product_id=product_id,
                 product_name=product_data.get("product_name"),
                 price=product_data.get("price"),
                 main_raw_materials=product_data.get("main_raw_materials"),
@@ -403,7 +502,7 @@ class AIChatbotHandler:
     def get_progress(self) -> Dict[str, Any]:
         """Get current progress of data collection"""
         fields_completed = 0
-        total_fields = 6  # Total number of company fields (excluding registration fields)
+        total_fields = 7  # Total number of company fields: industry, capital, 2 patents, certification, esg_count, esg_list
 
         # Only collect fields within chatbot's responsibility
         if self.onboarding_data.industry:
@@ -416,7 +515,9 @@ class AIChatbotHandler:
             fields_completed += 1
         if self.onboarding_data.certification_count is not None:
             fields_completed += 1
-        if self.onboarding_data.esg_certification is not None:
+        if self.onboarding_data.esg_certification_count is not None:
+            fields_completed += 1
+        if self.onboarding_data.esg_certification:
             fields_completed += 1
 
         return {
