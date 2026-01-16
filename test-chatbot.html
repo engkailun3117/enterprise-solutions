@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot API Test - testuser</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .status {
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .status-item {
+            font-size: 13px;
+            color: #495057;
+        }
+
+        .status-item strong {
+            color: #212529;
+        }
+
+        .progress-bar {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .progress-item {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .progress-item.completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .progress-item.pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .message.user {
+            flex-direction: row-reverse;
+        }
+
+        .message-avatar {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            flex-shrink: 0;
+        }
+
+        .message.assistant .message-avatar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .message.user .message-avatar {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 15px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .message.assistant .message-content {
+            background: white;
+            color: #212529;
+            border: 1px solid #e9ecef;
+        }
+
+        .message.user .message-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .message-time {
+            font-size: 11px;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+
+        .input-area {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #dee2e6;
+        }
+
+        .file-upload-area {
+            margin-bottom: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border: 2px dashed #dee2e6;
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .file-upload-area:hover {
+            background: #e9ecef;
+            border-color: #667eea;
+        }
+
+        .file-upload-area.drag-over {
+            background: #e7f1ff;
+            border-color: #667eea;
+        }
+
+        .file-info {
+            font-size: 13px;
+            color: #495057;
+            margin-top: 5px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .input-group input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #dee2e6;
+            border-radius: 25px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .input-group input:focus {
+            border-color: #667eea;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            outline: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #5a6268;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+        }
+
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        .error {
+            padding: 12px 16px;
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .success {
+            padding: 12px 16px;
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .message-content {
+                max-width: 85%;
+            }
+
+            .container {
+                height: 95vh;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 AI Chatbot Test Interface</h1>
+            <p>Testing as: <strong>testuser</strong> | API: http://localhost:8000</p>
+        </div>
+
+        <div class="status">
+            <div class="status-item">
+                Session ID: <strong id="sessionId">-</strong>
+            </div>
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+
+        <div class="chat-container" id="chatContainer">
+            <div class="loading">Initializing chatbot</div>
+        </div>
+
+        <div class="input-area">
+            <div class="file-upload-area" id="fileUploadArea">
+                <div>📁 Click or drag & drop file here</div>
+                <div class="file-info">Support: PDF, DOCX, JPG, PNG, TXT (Max 10MB)</div>
+                <input type="file" id="fileInput" accept=".pdf,.docx,.jpg,.jpeg,.png,.txt">
+            </div>
+
+            <div class="input-group">
+                <input type="text" id="messageInput" placeholder="輸入訊息..." disabled>
+                <button class="btn btn-primary" id="sendBtn" disabled>Send</button>
+            </div>
+
+            <div class="actions">
+                <button class="btn btn-secondary" id="newSessionBtn">New Session</button>
+                <button class="btn btn-secondary" id="exportBtn" disabled>Export Data</button>
+                <button class="btn btn-secondary" id="exportAllBtn">Export All</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/jose@4.14.4/dist/browser/index.js"></script>
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        const JWT_SECRET = 'your-shared-secret-key'; // Change this to match your EXTERNAL_JWT_SECRET
+        const USER_ID = 'testuser';
+        const USERNAME = 'testuser';
+
+        let token = '';
+        let sessionId = null;
+        let isLoading = false;
+
+        // DOM elements
+        const chatContainer = document.getElementById('chatContainer');
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const newSessionBtn = document.getElementById('newSessionBtn');
+        const exportBtn = document.getElementById('exportBtn');
+        const exportAllBtn = document.getElementById('exportAllBtn');
+        const sessionIdDisplay = document.getElementById('sessionId');
+        const progressBar = document.getElementById('progressBar');
+        const fileUploadArea = document.getElementById('fileUploadArea');
+        const fileInput = document.getElementById('fileInput');
+
+        // Generate JWT token
+        async function generateToken() {
+            const encoder = new TextEncoder();
+            const secret = encoder.encode(JWT_SECRET);
+
+            const payload = {
+                user_id: USER_ID,
+                username: USERNAME,
+                exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
+            };
+
+            token = await new jose.SignJWT(payload)
+                .setProtectedHeader({ alg: 'HS256' })
+                .setExpirationTime('24h')
+                .sign(secret);
+
+            console.log('Generated JWT token:', token);
+        }
+
+        // API request helper
+        async function apiRequest(endpoint, options = {}) {
+            const response = await fetch(`${API_BASE}${endpoint}`, {
+                ...options,
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    ...options.headers
+                }
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'API request failed');
+            }
+
+            return await response.json();
+        }
+
+        // Add message to chat
+        function addMessage(role, content, time = new Date()) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+
+            const avatar = document.createElement('div');
+            avatar.className = 'message-avatar';
+            avatar.textContent = role === 'user' ? 'U' : '🤖';
+
+            const contentDiv = document.createElement('div');
+            const messageContent = document.createElement('div');
+            messageContent.className = 'message-content';
+            messageContent.textContent = content;
+
+            const messageTime = document.createElement('div');
+            messageTime.className = 'message-time';
+            messageTime.textContent = time.toLocaleTimeString('zh-TW');
+
+            contentDiv.appendChild(messageContent);
+            contentDiv.appendChild(messageTime);
+
+            messageDiv.appendChild(avatar);
+            messageDiv.appendChild(contentDiv);
+
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // Show error message
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = `❌ Error: ${message}`;
+            chatContainer.appendChild(errorDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // Show success message
+        function showSuccess(message) {
+            const successDiv = document.createElement('div');
+            successDiv.className = 'success';
+            successDiv.textContent = `✅ ${message}`;
+            chatContainer.appendChild(successDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // Update progress bar
+        function updateProgress(progress) {
+            progressBar.innerHTML = '';
+            if (!progress) return;
+
+            const items = [
+                { key: 'industry', label: '產業' },
+                { key: 'capital_amount', label: '資本額' },
+                { key: 'patents', label: '專利' },
+                { key: 'certifications', label: '認證' },
+                { key: 'products', label: '產品' }
+            ];
+
+            items.forEach(item => {
+                const div = document.createElement('div');
+                div.className = `progress-item ${progress[item.key] ? 'completed' : 'pending'}`;
+                div.textContent = `${item.label} ${progress[item.key] ? '✓' : '○'}`;
+                progressBar.appendChild(div);
+            });
+        }
+
+        // Create new session
+        async function createNewSession() {
+            try {
+                isLoading = true;
+                chatContainer.innerHTML = '<div class="loading">Creating new session</div>';
+
+                const response = await apiRequest('/api/chatbot/sessions/new', {
+                    method: 'POST'
+                });
+
+                sessionId = response.session_id;
+                sessionIdDisplay.textContent = sessionId;
+
+                chatContainer.innerHTML = '';
+                addMessage('assistant', response.message);
+                updateProgress(response.progress);
+
+                messageInput.disabled = false;
+                sendBtn.disabled = false;
+                exportBtn.disabled = false;
+
+                console.log('Session created:', sessionId);
+            } catch (error) {
+                console.error('Failed to create session:', error);
+                chatContainer.innerHTML = '';
+                showError(error.message);
+            } finally {
+                isLoading = false;
+            }
+        }
+
+        // Send message
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message || isLoading || !sessionId) return;
+
+            try {
+                isLoading = true;
+                messageInput.disabled = true;
+                sendBtn.disabled = true;
+
+                addMessage('user', message);
+                messageInput.value = '';
+
+                const response = await apiRequest('/api/chatbot/message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        message: message
+                    })
+                });
+
+                addMessage('assistant', response.message);
+                updateProgress(response.progress);
+
+                if (response.completed) {
+                    showSuccess('對話完成！可以導出數據了。');
+                }
+            } catch (error) {
+                console.error('Failed to send message:', error);
+                showError(error.message);
+            } finally {
+                isLoading = false;
+                messageInput.disabled = false;
+                sendBtn.disabled = false;
+                messageInput.focus();
+            }
+        }
+
+        // Upload file
+        async function uploadFile(file) {
+            if (!file) return;
+
+            // Check file size
+            if (file.size > 10 * 1024 * 1024) {
+                showError('File size exceeds 10MB limit');
+                return;
+            }
+
+            try {
+                isLoading = true;
+                messageInput.disabled = true;
+                sendBtn.disabled = true;
+
+                const formData = new FormData();
+                formData.append('file', file);
+                if (sessionId) {
+                    formData.append('session_id', sessionId);
+                }
+
+                showSuccess(`Uploading: ${file.name}...`);
+
+                const response = await fetch(`${API_BASE}/api/chatbot/upload-file`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Upload failed');
+                }
+
+                const data = await response.json();
+
+                if (!sessionId) {
+                    sessionId = data.session_id;
+                    sessionIdDisplay.textContent = sessionId;
+                    exportBtn.disabled = false;
+                }
+
+                addMessage('assistant', data.message);
+                updateProgress(data.progress);
+                showSuccess('File processed successfully!');
+
+            } catch (error) {
+                console.error('Failed to upload file:', error);
+                showError(error.message);
+            } finally {
+                isLoading = false;
+                messageInput.disabled = false;
+                sendBtn.disabled = false;
+                fileInput.value = '';
+            }
+        }
+
+        // Export session data
+        async function exportSessionData() {
+            if (!sessionId) return;
+
+            try {
+                const data = await apiRequest(`/api/chatbot/export/${sessionId}`);
+
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `chatbot-export-${sessionId}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+
+                showSuccess(`Session ${sessionId} data exported!`);
+            } catch (error) {
+                console.error('Failed to export data:', error);
+                showError(error.message);
+            }
+        }
+
+        // Export all sessions
+        async function exportAllSessions() {
+            try {
+                const data = await apiRequest('/api/chatbot/export/all');
+
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `chatbot-export-all.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+
+                showSuccess('All sessions data exported!');
+            } catch (error) {
+                console.error('Failed to export all data:', error);
+                showError(error.message);
+            }
+        }
+
+        // Event listeners
+        sendBtn.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !isLoading) {
+                sendMessage();
+            }
+        });
+
+        newSessionBtn.addEventListener('click', createNewSession);
+        exportBtn.addEventListener('click', exportSessionData);
+        exportAllBtn.addEventListener('click', exportAllSessions);
+
+        // File upload events
+        fileUploadArea.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                uploadFile(e.target.files[0]);
+            }
+        });
+
+        // Drag and drop
+        fileUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.add('drag-over');
+        });
+
+        fileUploadArea.addEventListener('dragleave', () => {
+            fileUploadArea.classList.remove('drag-over');
+        });
+
+        fileUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.remove('drag-over');
+            if (e.dataTransfer.files.length > 0) {
+                uploadFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        // Initialize
+        async function init() {
+            try {
+                await generateToken();
+
+                // Verify authentication
+                const user = await apiRequest('/api/auth/me');
+                console.log('User authenticated:', user);
+
+                // Create initial session
+                await createNewSession();
+            } catch (error) {
+                console.error('Initialization failed:', error);
+                chatContainer.innerHTML = '';
+                showError(`Initialization failed: ${error.message}`);
+                showError('Make sure the backend is running and EXTERNAL_JWT_SECRET matches!');
+            }
+        }
+
+        // Start
+        init();
+    </script>
+</body>
+</html>
