@@ -1,7 +1,7 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 
 from database import get_db, engine, Base
@@ -15,6 +15,7 @@ from config import get_settings
 from auth import get_current_active_user
 from chatbot_handler import ChatbotHandler
 from ai_chatbot_handler import AIChatbotHandler
+from file_processor import FileProcessor
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -161,6 +162,185 @@ async def send_chatbot_message(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while processing your message: {str(e)}"
+        )
+
+
+@app.post("/api/chatbot/upload-file")
+async def upload_file_for_extraction(
+    file: UploadFile = File(...),
+    session_id: Optional[int] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Upload a file (PDF, DOCX, Image) and extract company information using AI
+
+    - **file**: File to upload (PDF, DOCX, JPG, PNG, TXT)
+    - **session_id**: Optional session ID to add extracted data to existing session
+
+    Requires: Authentication
+    Returns: Extracted text and AI-processed company information
+
+    Supported file types:
+    - PDF documents (.pdf)
+    - Word documents (.docx)
+    - Images (.jpg, .png) - with OCR or AI Vision
+    - Text files (.txt)
+
+    Maximum file size: 10MB
+    """
+    try:
+        # Read file content
+        file_content = await file.read()
+
+        # Initialize file processor
+        processor = FileProcessor()
+
+        # Check file type
+        content_type = file.content_type
+        if not processor.is_supported(content_type):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported file type: {content_type}. Supported: PDF, DOCX, JPG, PNG, TXT"
+            )
+
+        # Process file and extract text
+        result = processor.process_file(file_content, file.filename, content_type)
+
+        if not result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result["error"]
+            )
+
+        extracted_text = result["extracted_text"]
+
+        # Use AI to extract structured data from text
+        settings = get_settings()
+        if not settings.use_ai_chatbot or not settings.openai_api_key:
+            # Return raw extracted text if AI is not available
+            return {
+                "success": True,
+                "filename": file.filename,
+                "extracted_text": extracted_text,
+                "message": "文件已成功處理。請將提取的文字發送給聊天機器人進行處理。",
+                "ai_available": False
+            }
+
+        # Initialize AI handler
+        handler = AIChatbotHandler(db, current_user.id, session_id)
+
+        # Create session if needed
+        if not handler.session:
+            handler.create_session()
+            session_id = handler.session.id
+
+        # Use AI to extract structured company information
+        from openai import OpenAI
+        client = OpenAI(api_key=settings.openai_api_key)
+
+        ai_response = client.chat.completions.create(
+            model=settings.openai_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": """你是一個資料提取專家。從提供的文件內容中提取以下公司資訊（如果存在）：
+                    - 產業別
+                    - 資本總額（以臺幣為單位）
+                    - 發明專利數量
+                    - 新型專利數量
+                    - 公司認證資料數量
+                    - ESG相關認證（是/否）
+                    - 產品資訊（產品ID、名稱、價格、原料、規格、技術優勢）
+
+                    以友善的方式總結找到的資訊，並告訴使用者已自動填入這些資料。
+                    如果某些資訊未找到，禮貌地告知使用者可以稍後補充。"""
+                },
+                {
+                    "role": "user",
+                    "content": f"從以下文件內容中提取公司資訊：\n\n{extracted_text[:4000]}"  # Limit to 4000 chars
+                }
+            ],
+            tools=[
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "update_company_data",
+                        "description": "更新公司資料",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "industry": {"type": "string"},
+                                "capital_amount": {"type": "integer"},
+                                "invention_patent_count": {"type": "integer"},
+                                "utility_patent_count": {"type": "integer"},
+                                "certification_count": {"type": "integer"},
+                                "esg_certification": {"type": "boolean"}
+                            }
+                        }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "add_product",
+                        "description": "新增產品資訊",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "product_id": {"type": "string"},
+                                "product_name": {"type": "string"},
+                                "price": {"type": "string"},
+                                "main_raw_materials": {"type": "string"},
+                                "product_standard": {"type": "string"},
+                                "technical_advantages": {"type": "string"}
+                            },
+                            "required": ["product_name"]
+                        }
+                    }
+                }
+            ],
+            tool_choice="auto"
+        )
+
+        # Process AI response and update database
+        ai_message = ai_response.choices[0].message.content or "已處理文件並提取資訊。"
+        data_updated = False
+        products_added = 0
+
+        if ai_response.choices[0].message.tool_calls:
+            import json
+            for tool_call in ai_response.choices[0].message.tool_calls:
+                function_name = tool_call.function.name
+                function_args = json.loads(tool_call.function.arguments)
+
+                if function_name == "update_company_data":
+                    if handler.update_onboarding_data(function_args):
+                        data_updated = True
+                elif function_name == "add_product":
+                    if handler.add_product(function_args):
+                        products_added += 1
+
+        # Save the AI message to conversation history
+        handler.add_message("assistant", f"📄 已處理文件：{file.filename}\n\n{ai_message}")
+
+        return {
+            "success": True,
+            "filename": file.filename,
+            "session_id": session_id,
+            "message": ai_message,
+            "extracted_text_length": len(extracted_text),
+            "data_updated": data_updated,
+            "products_added": products_added,
+            "progress": handler.get_progress()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error processing file: {str(e)}"
         )
 
 

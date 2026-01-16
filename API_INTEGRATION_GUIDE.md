@@ -464,6 +464,100 @@ Authorization: Bearer <jwt-token>
 
 ---
 
+### 10. Upload File for Data Extraction
+
+Upload a document (PDF, Word, Image, or Text) for AI-powered data extraction. The chatbot will automatically extract company information and populate the onboarding data.
+
+**Endpoint:** `POST /api/chatbot/upload-file`
+
+**Headers:**
+```
+Authorization: Bearer <jwt-token>
+Content-Type: multipart/form-data
+```
+
+**Request Body (Form Data):**
+```
+file: <binary-file>
+session_id: <integer> (optional)
+```
+
+**Supported File Types:**
+- PDF (`.pdf`)
+- Word Documents (`.docx`)
+- Images (`.jpg`, `.jpeg`, `.png`)
+- Text Files (`.txt`)
+
+**File Size Limit:** 10MB
+
+**Response:**
+```json
+{
+  "session_id": 1,
+  "message": "✅ 文件處理成功！\n\n📄 文件資訊：\n- 文件名稱：company_info.pdf\n- 文件類型：PDF文件\n- 提取字數：1500 字\n\n🤖 AI 已自動提取以下資訊：\n公司名稱：科技電子股份有限公司\n產業別：電子業\n資本額：5000000元...",
+  "completed": false,
+  "progress": {
+    "industry": true,
+    "capital_amount": true,
+    "patents": true,
+    "certifications": true,
+    "products": true
+  }
+}
+```
+
+**Status Codes:**
+- `200` - Success
+- `400` - Invalid file type or file too large
+- `401` - Invalid or missing token
+- `500` - File processing error
+
+**JavaScript Example:**
+```javascript
+async function uploadFile(chatbot, file, sessionId = null) {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (sessionId) {
+    formData.append('session_id', sessionId);
+  }
+
+  const response = await fetch('http://localhost:8000/api/chatbot/upload-file', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`
+      // Don't set Content-Type - browser will set it with boundary
+    },
+    body: formData
+  });
+
+  return await response.json();
+}
+```
+
+**Python Example:**
+```python
+async def upload_file(chatbot: ChatbotAPIClient, file_path: str, session_id: Optional[int] = None):
+    """Upload file for data extraction"""
+    with open(file_path, 'rb') as f:
+        files = {'file': (os.path.basename(file_path), f)}
+        data = {}
+        if session_id:
+            data['session_id'] = session_id
+
+        response = await chatbot.client.post('/api/chatbot/upload-file', files=files, data=data)
+        response.raise_for_status()
+        return response.json()
+```
+
+**Notes:**
+- If `session_id` is not provided, a new session will be created automatically
+- The AI will extract structured company data including: company name, industry, capital, patents, certifications, and products
+- Extracted data is automatically saved to the database
+- For images, OpenAI Vision API is used for higher accuracy (if configured), otherwise Tesseract OCR is used
+- Chinese characters are supported (Traditional Chinese)
+
+---
+
 ## Integration Workflow
 
 ### Typical User Flow
@@ -576,6 +670,23 @@ class ChatbotAPI {
   // Export all completed sessions
   async exportAll() {
     const response = await this.client.get('/api/chatbot/export/all');
+    return response.data;
+  }
+
+  // Upload file for data extraction
+  async uploadFile(file, sessionId = null) {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (sessionId) {
+      formData.append('session_id', sessionId);
+    }
+
+    // Note: axios will automatically set Content-Type with boundary
+    const response = await this.client.post('/api/chatbot/upload-file', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
     return response.data;
   }
 }
@@ -694,6 +805,18 @@ class ChatbotAPIClient:
         response = await self.client.get(f'/api/chatbot/export/{session_id}')
         response.raise_for_status()
         return response.json()
+
+    async def upload_file(self, file_path: str, session_id: Optional[int] = None) -> Dict[str, Any]:
+        """Upload file for data extraction"""
+        with open(file_path, 'rb') as f:
+            files = {'file': (file_path.split('/')[-1], f)}
+            data = {}
+            if session_id:
+                data['session_id'] = session_id
+
+            response = await self.client.post('/api/chatbot/upload-file', files=files, data=data)
+            response.raise_for_status()
+            return response.json()
 
     async def close(self):
         """Close the HTTP client"""
@@ -955,6 +1078,7 @@ For technical support or questions:
 - AI-powered chatbot (OpenAI GPT-4o-mini)
 - Auto user synchronization
 - Chinese language support
+- File upload and AI data extraction (PDF, DOCX, Images, TXT)
 
 ---
 
