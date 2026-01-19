@@ -856,9 +856,16 @@
                         });
                     }
 
-                    // Get progress
+                    // Get data and convert to progress format
                     const data = await apiRequest(`/api/chatbot/data/${sessionId}`);
-                    updateProgress(data);
+                    const progress = {
+                        industry: !!data.industry,
+                        capital_amount: data.capital_amount !== null,
+                        patents: data.invention_patent_count !== null || data.utility_patent_count !== null,
+                        certifications: data.certification_count !== null || data.esg_certification_count !== null,
+                        products: data.products && data.products.length > 0
+                    };
+                    updateProgress(progress);
 
                     messageInput.disabled = false;
                     sendBtn.disabled = false;
