@@ -287,6 +287,137 @@
             display: none;
         }
 
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            max-width: 800px;
+            max-height: 80vh;
+            width: 100%;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+
+        .modal-header {
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            font-size: 20px;
+            margin: 0;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 28px;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+
+        .modal-close:hover {
+            opacity: 0.8;
+        }
+
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .data-field {
+            margin-bottom: 15px;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .data-field-label {
+            font-weight: 600;
+            color: #495057;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+
+        .data-field-value {
+            color: #212529;
+            font-size: 14px;
+        }
+
+        .data-field-value.null {
+            color: #6c757d;
+            font-style: italic;
+        }
+
+        .history-message {
+            margin-bottom: 12px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+
+        .history-message.user {
+            background: #e7f1ff;
+            border-left: 3px solid #667eea;
+        }
+
+        .history-message.assistant {
+            background: #f8f9fa;
+            border-left: 3px solid #6c757d;
+        }
+
+        .history-message-role {
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            color: #667eea;
+        }
+
+        .history-message.assistant .history-message-role {
+            color: #6c757d;
+        }
+
+        .history-message-time {
+            font-size: 10px;
+            color: #6c757d;
+            margin-top: 4px;
+        }
+
         @media (max-width: 768px) {
             .message-content {
                 max-width: 85%;
@@ -294,6 +425,10 @@
 
             .container {
                 height: 95vh;
+            }
+
+            .modal-content {
+                max-height: 90vh;
             }
         }
     </style>
@@ -330,8 +465,24 @@
 
             <div class="actions">
                 <button class="btn btn-secondary" id="newSessionBtn">New Session</button>
+                <button class="btn btn-secondary" id="loadLatestBtn">Load Latest Session</button>
+                <button class="btn btn-secondary" id="viewCurrentDataBtn">View Current Data</button>
+                <button class="btn btn-secondary" id="viewHistoryBtn" disabled>View History</button>
                 <button class="btn btn-secondary" id="exportBtn" disabled>Export Data</button>
                 <button class="btn btn-secondary" id="exportAllBtn">Export All</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for displaying data -->
+    <div class="modal" id="dataModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Data View</h2>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Content will be inserted here -->
             </div>
         </div>
     </div>
@@ -351,12 +502,19 @@
         const messageInput = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
         const newSessionBtn = document.getElementById('newSessionBtn');
+        const loadLatestBtn = document.getElementById('loadLatestBtn');
+        const viewCurrentDataBtn = document.getElementById('viewCurrentDataBtn');
+        const viewHistoryBtn = document.getElementById('viewHistoryBtn');
         const exportBtn = document.getElementById('exportBtn');
         const exportAllBtn = document.getElementById('exportAllBtn');
         const sessionIdDisplay = document.getElementById('sessionId');
         const progressBar = document.getElementById('progressBar');
         const fileUploadArea = document.getElementById('fileUploadArea');
         const fileInput = document.getElementById('fileInput');
+        const dataModal = document.getElementById('dataModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalBody = document.getElementById('modalBody');
+        const modalClose = document.getElementById('modalClose');
 
         // Base64URL encoding helper
         function base64urlEncode(str) {
@@ -523,6 +681,7 @@
                 messageInput.disabled = false;
                 sendBtn.disabled = false;
                 exportBtn.disabled = false;
+                viewHistoryBtn.disabled = false;
 
                 console.log('Session created:', sessionId);
             } catch (error) {
@@ -615,6 +774,7 @@
                     sessionId = data.session_id;
                     sessionIdDisplay.textContent = sessionId;
                     exportBtn.disabled = false;
+                    viewHistoryBtn.disabled = false;
                 }
 
                 addMessage('assistant', data.message);
@@ -674,6 +834,136 @@
             }
         }
 
+        // Load latest session
+        async function loadLatestSession() {
+            try {
+                const response = await apiRequest('/api/chatbot/sessions/latest');
+
+                if (response.session_id) {
+                    sessionId = response.session_id;
+                    sessionIdDisplay.textContent = sessionId;
+
+                    // Load messages for this session
+                    const messages = await apiRequest(`/api/chatbot/sessions/${sessionId}/messages`);
+
+                    chatContainer.innerHTML = '';
+
+                    if (messages.length === 0) {
+                        addMessage('assistant', 'Session loaded. No messages yet.');
+                    } else {
+                        messages.forEach(msg => {
+                            addMessage(msg.role, msg.content, new Date(msg.created_at));
+                        });
+                    }
+
+                    // Get progress
+                    const data = await apiRequest(`/api/chatbot/sessions/${sessionId}/data`);
+                    updateProgress(data);
+
+                    messageInput.disabled = false;
+                    sendBtn.disabled = false;
+                    exportBtn.disabled = false;
+                    viewHistoryBtn.disabled = false;
+
+                    showSuccess(`Loaded session ${sessionId} with ${messages.length} messages`);
+                    console.log('Loaded latest session:', response);
+                } else {
+                    showError('No active session found. Please create a new session.');
+                }
+            } catch (error) {
+                console.error('Failed to load latest session:', error);
+                showError(error.message);
+            }
+        }
+
+        // View current data
+        async function viewCurrentData() {
+            try {
+                modalTitle.textContent = '📊 Current Company Data';
+                const data = await apiRequest('/api/chatbot/data/current');
+
+                if (!data.has_data || !data.data) {
+                    modalBody.innerHTML = '<div class="data-field"><div class="data-field-value null">No data available yet. Start a chat session to collect company data.</div></div>';
+                } else {
+                    modalBody.innerHTML = formatDataFields(data.data);
+                }
+
+                dataModal.classList.add('show');
+                console.log('Current data:', data);
+            } catch (error) {
+                console.error('Failed to load current data:', error);
+                showError(error.message);
+            }
+        }
+
+        // View session history
+        async function viewSessionHistory() {
+            if (!sessionId) {
+                showError('No session loaded');
+                return;
+            }
+
+            try {
+                modalTitle.textContent = `💬 Session History (${sessionId})`;
+                const messages = await apiRequest(`/api/chatbot/sessions/${sessionId}/messages`);
+
+                if (messages.length === 0) {
+                    modalBody.innerHTML = '<div class="data-field"><div class="data-field-value null">No messages in this session yet.</div></div>';
+                } else {
+                    modalBody.innerHTML = messages.map(msg => `
+                        <div class="history-message ${msg.role}">
+                            <div class="history-message-role">${msg.role === 'user' ? '👤 User' : '🤖 Assistant'}</div>
+                            <div>${msg.content}</div>
+                            <div class="history-message-time">${new Date(msg.created_at).toLocaleString('zh-TW')}</div>
+                        </div>
+                    `).join('');
+                }
+
+                dataModal.classList.add('show');
+                console.log('Session history:', messages);
+            } catch (error) {
+                console.error('Failed to load session history:', error);
+                showError(error.message);
+            }
+        }
+
+        // Format data fields for display
+        function formatDataFields(data) {
+            const fields = [
+                { key: 'industry', label: 'Industry / 產業別' },
+                { key: 'capital_amount', label: 'Capital Amount / 資本總額', format: (v) => v ? `NT$ ${v.toLocaleString()}` : null },
+                { key: 'invention_patent_count', label: 'Invention Patents / 發明專利數量' },
+                { key: 'utility_patent_count', label: 'Utility Patents / 新型專利數量' },
+                { key: 'certification_count', label: 'Company Certifications / 公司認證數量' },
+                { key: 'esg_certification_count', label: 'ESG Certification Count / ESG認證數量' },
+                { key: 'esg_certification', label: 'ESG Certifications / ESG認證列表' },
+                { key: 'is_current', label: 'Is Current / 當前資料', format: (v) => v ? 'Yes' : 'No' },
+                { key: 'created_at', label: 'Created At / 建立時間', format: (v) => v ? new Date(v).toLocaleString('zh-TW') : null },
+                { key: 'updated_at', label: 'Updated At / 更新時間', format: (v) => v ? new Date(v).toLocaleString('zh-TW') : null },
+            ];
+
+            return fields.map(field => {
+                let value = data[field.key];
+                if (field.format && value !== null && value !== undefined) {
+                    value = field.format(value);
+                }
+                const displayValue = (value === null || value === undefined) ? 'NULL' : value;
+                const valueClass = (value === null || value === undefined) ? 'null' : '';
+
+                return `
+                    <div class="data-field">
+                        <div class="data-field-label">${field.label}</div>
+                        <div class="data-field-value ${valueClass}">${displayValue}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Close modal
+        function closeModal() {
+            dataModal.classList.remove('show');
+        }
+
         // Event listeners
         sendBtn.addEventListener('click', sendMessage);
         messageInput.addEventListener('keypress', (e) => {
@@ -683,8 +973,15 @@
         });
 
         newSessionBtn.addEventListener('click', createNewSession);
+        loadLatestBtn.addEventListener('click', loadLatestSession);
+        viewCurrentDataBtn.addEventListener('click', viewCurrentData);
+        viewHistoryBtn.addEventListener('click', viewSessionHistory);
         exportBtn.addEventListener('click', exportSessionData);
         exportAllBtn.addEventListener('click', exportAllSessions);
+        modalClose.addEventListener('click', closeModal);
+        dataModal.addEventListener('click', (e) => {
+            if (e.target === dataModal) closeModal();
+        });
 
         // File upload events
         fileUploadArea.addEventListener('click', () => fileInput.click());
