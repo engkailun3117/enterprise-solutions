@@ -116,7 +116,9 @@ class OnboardingDataResponse(BaseModel):
     invention_patent_count: Optional[int]
     utility_patent_count: Optional[int]
     certification_count: Optional[int]
-    esg_certification: Optional[bool]
+    esg_certification_count: Optional[int]
+    esg_certification: Optional[str]
+    is_current: bool
     created_at: datetime
     updated_at: datetime
     products: list[dict]

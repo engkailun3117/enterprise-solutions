@@ -857,7 +857,7 @@
                     }
 
                     // Get progress
-                    const data = await apiRequest(`/api/chatbot/sessions/${sessionId}/data`);
+                    const data = await apiRequest(`/api/chatbot/data/${sessionId}`);
                     updateProgress(data);
 
                     messageInput.disabled = false;
