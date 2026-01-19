@@ -460,6 +460,7 @@ async def create_new_session_with_context(
             new_onboarding.invention_patent_count = latest_company_data.invention_patent_count
             new_onboarding.utility_patent_count = latest_company_data.utility_patent_count
             new_onboarding.certification_count = latest_company_data.certification_count
+            new_onboarding.esg_certification_count = latest_company_data.esg_certification_count
             new_onboarding.esg_certification = latest_company_data.esg_certification
 
             db.commit()
