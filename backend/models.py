@@ -191,6 +191,7 @@ class CompanyOnboarding(Base):
             "certification_count": self.certification_count,
             "esg_certification_count": self.esg_certification_count,
             "esg_certification": self.esg_certification,
+            "is_current": self.is_current,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "products": [p.to_dict() for p in self.products] if self.products else []
