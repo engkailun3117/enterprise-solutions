@@ -426,6 +426,37 @@ class AIChatbotHandler:
             self.db.rollback()
             return None
 
+    def get_next_field_question(self) -> str:
+        """Get the next field question based on what's already collected"""
+        # Check fields in order and return the first missing one
+        if not self.onboarding_data.industry:
+            return "請問您的公司所屬產業別是什麼？（例如：食品業、鋼鐵業、電子業等）"
+
+        if self.onboarding_data.capital_amount is None:
+            return "請問您的公司資本總額是多少？（以臺幣為單位）"
+
+        if self.onboarding_data.invention_patent_count is None:
+            return "請問貴公司有多少發明專利？（請提供數量）"
+
+        if self.onboarding_data.utility_patent_count is None:
+            return "請問貴公司有多少新型專利？（請提供數量）"
+
+        if self.onboarding_data.certification_count is None:
+            return "請問貴公司有多少公司認證資料？（不包括ESG認證，例如：ISO 9001、HACCP等）"
+
+        if not self.onboarding_data.esg_certification:
+            return "請列出貴公司所有ESG相關認證（例如：ISO 14064, ISO 14067, ISO 14046）。如果沒有，請回答「無」。"
+
+        # All basic fields collected, ask for products
+        products_count = self.db.query(Product).filter(
+            Product.onboarding_id == self.onboarding_data.id
+        ).count()
+
+        if products_count == 0:
+            return "太好了！基本資料已收集完成。接下來請提供產品資訊。請問第一個產品的名稱是什麼？"
+        else:
+            return f"目前已新增 {products_count} 個產品。還有其他產品要新增嗎？如果資料已完成，請告訴我。"
+
     def process_message(self, user_message: str) -> tuple[str, bool]:
         """
         Process user message with AI and return bot response
@@ -500,16 +531,18 @@ class AIChatbotHandler:
         # Return AI response with context-aware fallback
         response_message = ai_result.get("message", "")
         if not response_message:
-            # Generate appropriate message based on what was updated
+            # Generate appropriate message based on what was updated, then ask for next field
+            confirmation = ""
             if data_updated and products_added > 0:
-                response_message = f"好的！我已更新公司資料並新增了 {products_added} 個產品。還有其他資訊要補充嗎？"
+                confirmation = f"好的！我已更新公司資料並新增了 {products_added} 個產品。\n\n"
             elif data_updated:
-                response_message = "好的！我已更新您的公司資料。還有其他資訊要補充嗎？"
+                confirmation = "好的！我已記錄您的資訊。\n\n"
             elif products_added > 0:
-                response_message = f"好的！我已新增了 {products_added} 個產品。還有其他產品或資訊要補充嗎？"
-            else:
-                # No functions were called - user might be chatting
-                response_message = "我理解了。請繼續提供資訊，或告訴我您需要什麼幫助。"
+                confirmation = f"好的！我已新增了 {products_added} 個產品。\n\n"
+
+            # Proactively ask for the next field
+            next_question = self.get_next_field_question()
+            response_message = confirmation + next_question
 
         return response_message, completed
 

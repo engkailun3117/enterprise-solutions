@@ -332,14 +332,19 @@ async def upload_file_for_extraction(
 
         # Generate context-aware message if AI didn't provide one
         if not ai_message:
+            confirmation = ""
             if data_updated and products_added > 0:
-                ai_message = f"已從文件中提取公司資料並新增了 {products_added} 個產品！資料已自動填入對應欄位。"
+                confirmation = f"已從文件中提取公司資料並新增了 {products_added} 個產品！資料已自動填入對應欄位。\n\n"
             elif data_updated:
-                ai_message = "已從文件中提取公司資料！資料已自動填入對應欄位。"
+                confirmation = "已從文件中提取公司資料！資料已自動填入對應欄位。\n\n"
             elif products_added > 0:
-                ai_message = f"已從文件中提取 {products_added} 個產品資訊！資料已自動填入。"
+                confirmation = f"已從文件中提取 {products_added} 個產品資訊！資料已自動填入。\n\n"
             else:
-                ai_message = "已處理文件，但未找到可提取的公司資料。您可以手動提供資訊。"
+                confirmation = "已處理文件，但未找到可提取的公司資料。\n\n"
+
+            # Proactively ask for the next field
+            next_question = handler.get_next_field_question()
+            ai_message = confirmation + next_question
 
         # Save the AI message to conversation history
         handler.add_message("assistant", f"📄 已處理文件：{file.filename}\n\n{ai_message}")
