@@ -428,6 +428,9 @@ class AIChatbotHandler:
 
     def get_next_field_question(self) -> str:
         """Get the next field question based on what's already collected"""
+        # Refresh data from database to get the latest state
+        self.db.refresh(self.onboarding_data)
+
         # Check fields in order and return the first missing one
         if not self.onboarding_data.industry:
             return "請問您的公司所屬產業別是什麼？（例如：食品業、鋼鐵業、電子業等）"
