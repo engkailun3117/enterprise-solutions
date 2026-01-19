@@ -124,7 +124,11 @@ class AIChatbotHandler:
 - ⚠️ **每次使用者回答問題時都要調用相應的函數（update_company_data 或 add_product）**
 - 例如：使用者說「100萬臺幣」→ 立即調用 update_company_data(capital_amount=1000000)
 - 例如：使用者說「發明專利11個」→ 立即調用 update_company_data(invention_patent_count=11)
-- 例如：使用者說「ISO 14067」→ 立即調用 update_company_data(esg_certification="ISO 14067")
+- 例如：使用者說「ISO 14067, ISO 14046」→ 立即調用 update_company_data(esg_certification="ISO 14067, ISO 14046", esg_certification_count=2)
+- ⚠️ **ESG認證特別注意**：當使用者提供ESG認證時，必須同時提供兩個參數：
+  * esg_certification: 認證列表字串（例如："ISO 14067, ISO 14046"）
+  * esg_certification_count: 認證數量（例如：2）
+  * 你必須數算使用者提供了幾個ESG認證，並同時傳遞這兩個參數
 
 重要提示：
 - **一次詢問一個欄位**，等待使用者回答後再詢問下一個
