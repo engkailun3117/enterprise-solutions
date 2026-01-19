@@ -887,7 +887,17 @@
         async function viewCurrentData() {
             try {
                 modalTitle.textContent = '📊 Current Company Data';
-                const data = await apiRequest('/api/chatbot/data/current');
+
+                let data;
+                if (sessionId) {
+                    // If we have a loaded session, get that session's data
+                    data = await apiRequest(`/api/chatbot/data/${sessionId}`);
+                    // Wrap it in the expected format
+                    data = { has_data: true, data: data };
+                } else {
+                    // Otherwise, get the current (is_current=True) data
+                    data = await apiRequest('/api/chatbot/data/current');
+                }
 
                 if (!data.has_data || !data.data) {
                     modalBody.innerHTML = '<div class="data-field"><div class="data-field-value null">No data available yet. Start a chat session to collect company data.</div></div>';
